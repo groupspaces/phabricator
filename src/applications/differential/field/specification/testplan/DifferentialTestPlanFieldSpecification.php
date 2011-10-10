@@ -49,11 +49,6 @@ final class DifferentialTestPlanFieldSpecification
   }
 
   public function validateField() {
-    if (!strlen($this->plan)) {
-      $this->error = 'Required';
-      throw new DifferentialFieldValidationException(
-        "You must provide a test plan.");
-    }
   }
 
   public function shouldAppearOnCommitMessage() {
