@@ -9,4 +9,4 @@ CREATE TABLE phabricator_phriction.phriction_document (
   depth INT UNSIGNED NOT NULL,
   UNIQUE KEY (depth, slug),
   contentID INT UNSIGNED NOT NULL
-) ENGINE=InnoDB;
+) ENGINE=InnoDB CHARSET=latin1;
