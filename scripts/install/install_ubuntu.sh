@@ -5,6 +5,9 @@ confirm() {
   read -e ignored
 }
 
+GIT='git'
+
+LTS="Ubuntu 10.04"
 ISSUE=`cat /etc/issue`
 if [[ $ISSUE != Ubuntu* ]]
 then
@@ -12,6 +15,9 @@ then
   echo "to be something else. Your results may vary.";
   echo
   confirm
+elif [[ `expr match "$ISSUE" "$LTS"` -eq ${#LTS} ]]
+then
+  GIT='git-core'
 fi
 
 echo "PHABRICATOR UBUNTU INSTALL SCRIPT";
@@ -37,7 +43,7 @@ echo
 set +x
 
 sudo apt-get -qq update
-sudo apt-get install git mysql-server apache2 php5 php5-mysql php5-gd php5-dev php5-curl php-apc dpkg-dev
+sudo apt-get install $GIT mysql-server apache2 php5 php5-mysql php5-gd php5-dev php5-curl php-apc php5-cli dpkg-dev
 
 HAVEPCNTL=`php -r "echo extension_loaded('pcntl');"`
 if [ $HAVEPCNTL != "1" ]

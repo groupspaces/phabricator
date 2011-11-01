@@ -104,6 +104,15 @@ class PhabricatorMetaMTAMail extends PhabricatorMetaMTADAO {
     return $this;
   }
 
+  public function addAttachment($data, $filename, $mimetype) {
+    $this->parameters['attachments'][] = array(
+      'data' => $data,
+      'filename' => $filename,
+      'mimetype' => $mimetype
+    );
+    return $this;
+  }
+
   public function setFrom($from) {
     $this->setParam('from', $from);
     return $this;
@@ -143,6 +152,20 @@ class PhabricatorMetaMTAMail extends PhabricatorMetaMTADAO {
   }
 
   /**
+   * Flag that this is an auto-generated bulk message and should have bulk
+   * headers added to it if appropriate. Broadly, this means some flavor of
+   * "Precedence: bulk" or similar, but is implementation and configuration
+   * dependent.
+   *
+   * @param bool  True if the mail is automated bulk mail.
+   * @return this
+   */
+  public function setIsBulk($is_bulk) {
+    $this->setParam('is-bulk', $is_bulk);
+    return $this;
+  }
+
+  /**
    * Use this method to set an ID used for message threading. MetaMTA will
    * set appropriate headers (Message-ID, In-Reply-To, References and
    * Thread-Index) based on the capabilities of the underlying mailer.
@@ -169,10 +192,12 @@ class PhabricatorMetaMTAMail extends PhabricatorMetaMTADAO {
    * @return this
    */
   public function saveAndSend() {
-    $ret = $this->save();
+    $ret = null;
 
     if (PhabricatorEnv::getEnvConfig('metamta.send-immediately')) {
-      $this->sendNow();
+      $ret = $this->sendNow();
+    } else {
+      $ret = $this->save();
     }
 
     return $ret;
@@ -284,6 +309,15 @@ class PhabricatorMetaMTAMail extends PhabricatorMetaMTADAO {
               $mailer->addHeader($header_key, $header_value);
             }
             break;
+          case 'attachments':
+            foreach ($value as $attachment) {
+              $mailer->addAttachment(
+                $attachment['data'],
+                $attachment['filename'],
+                $attachment['mimetype']
+              );
+            }
+            break;
           case 'body':
             $mailer->setBody($value);
             break;
@@ -293,6 +327,13 @@ class PhabricatorMetaMTAMail extends PhabricatorMetaMTADAO {
           case 'is-html':
             if ($value) {
               $mailer->setIsHTML(true);
+            }
+            break;
+          case 'is-bulk':
+            if ($value) {
+              if (PhabricatorEnv::getEnvConfig('metamta.precedence-bulk')) {
+                $mailer->addHeader('Precedence', 'bulk');
+              }
             }
             break;
           case 'thread-id':
@@ -325,8 +366,7 @@ class PhabricatorMetaMTAMail extends PhabricatorMetaMTADAO {
     } catch (Exception $ex) {
       $this->setStatus(self::STATUS_FAIL);
       $this->setMessage($ex->getMessage());
-      $this->save();
-      return;
+      return $this->save();
     }
 
     if ($this->getRetryCount() < $this->getSimulatedFailureCount()) {
@@ -355,7 +395,7 @@ class PhabricatorMetaMTAMail extends PhabricatorMetaMTADAO {
       $this->setStatus(self::STATUS_SENT);
     }
 
-    $this->save();
+    return $this->save();
   }
 
   public static function getReadableStatus($status_code) {

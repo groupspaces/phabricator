@@ -232,6 +232,11 @@ return array(
   // Prefix prepended to mail sent by Differential.
   'metamta.differential.subject-prefix' => '[Differential]',
 
+  // Set this to true if you want patches to be attached to mail from
+  // Differential.  This won't work if you are using SendGrid as your mail
+  // adapter.
+  'metamta.differential.attach-patches' => false,
+
   // By default, Phabricator generates unique reply-to addresses and sends a
   // separate email to each recipient when you enable reply handling. This is
   // more secure than using "From" to establish user identity, but can mean
@@ -262,6 +267,26 @@ return array(
   // annoying (you can write but not read content). But, you know, this is
   // still **COMPLETELY INSECURE**.
   'metamta.insecure-auth-with-reply-to' => false,
+
+  // If you enable 'metamta.maniphest.public-create-email' and create an
+  // email address like "bugs@phabricator.example.com", it will default to
+  // rejecting mail which doesn't come from a known user. However, you might
+  // want to let anyone send email to this address; to do so, set a default
+  // author here (a Phabricator username). A typical use of this might be to
+  // create a "System Agent" user called "bugs" and use that name here. If you
+  // specify a valid username, mail will always be accepted and used to create
+  // a task, even if the sender is not a system user. The original email
+  // address will be stored in an 'From Email' field on the task.
+  'metamta.maniphest.default-public-author' => null,
+
+  // If this option is enabled, Phabricator will add a "Precedence: bulk"
+  // header to transactional mail (e.g., Differential, Maniphest and Herald
+  // notifications). This may improve the behavior of some auto-responder
+  // software and prevent it from replying. However, it may also cause
+  // deliverability issues -- notably, you currently can not send this header
+  // via Amazon SES, and enabling this option with SES will prevent delivery
+  // of any affected mail.
+  'metamta.precedence-bulk' => false,
 
 
 // -- Auth ------------------------------------------------------------------ //
@@ -381,12 +406,6 @@ return array(
   // addresses.
   'phabricator.mail-key'        => '5ce3e7e8787f6e40dfae861da315a5cdf1018f12',
 
-
-  // This is hashed with other inputs to generate file secret keys. Changing
-  // it will invalidate all file URIs if you have an alternate file domain
-  // configured (see 'security.alternate-file-domain').
-  'phabricator.file-key'        => 'ade8dadc8b4382067069a4d4798112191af8a190',
-
   // Version string displayed in the footer. You probably should leave this
   // alone.
   'phabricator.version'         => 'UNSTABLE',
@@ -401,6 +420,14 @@ return array(
   // When unhandled exceptions occur, stack traces are hidden by default.
   // You can enable traces for development to make it easier to debug problems.
   'phabricator.show-stack-traces' => false,
+
+  // When users write comments which have URIs, they'll be automaticaly linked
+  // if the protocol appears in this set. This whitelist is primarily to prevent
+  // security issues like javascript:// URIs.
+  'uri.allowed-protocols' => array(
+    'http'  => true,
+    'https' => true,
+  ),
 
   // Tokenizers are UI controls which let the user select other users, email
   // addresses, project names, etc., by typing the first few letters and having
@@ -542,6 +569,11 @@ return array(
   // and, socially, email "!accept" is kind of sketchy and implies revisions may
   // not actually be receiving thorough review.
   'differential.enable-email-accept' => false,
+
+  // If you set this to true, users won't need to login to view differential
+  // revisions.  Anonymous users will have read-only access and won't be able to
+  // interact with the revisions.
+  'differential.anonymous-access' => false,
 
 
 // -- Maniphest ------------------------------------------------------------- //
