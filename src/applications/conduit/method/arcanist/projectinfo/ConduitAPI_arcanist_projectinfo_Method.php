@@ -67,7 +67,7 @@ class ConduitAPI_arcanist_projectinfo_Method
       'phid'            => $project->getPHID(),
       'repositoryPHID'  => $repository_phid,
       'tracked'         => $tracked,
-      'encoding'        => $repository->getDetail('encoding')
+      'encoding'        => $repository ? $repository->getDetail('encoding') : null
     );
   }
 
