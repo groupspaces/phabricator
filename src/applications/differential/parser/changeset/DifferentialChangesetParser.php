@@ -543,6 +543,16 @@ class DifferentialChangesetParser {
 
     $generated_guess = (strpos($new_corpus_block, '@'.'generated') !== false);
 
+    if (!$generated_guess) {
+      $generated_path_regexps = PhabricatorEnv::getEnvConfig('differential.generated-paths');
+      foreach ($generated_path_regexps as $regexp) {
+        if (preg_match($regexp, $changeset->getFilename())) {
+          $generated_guess = true;
+          break;
+        }
+      }
+    }
+
     $event = new PhabricatorEvent(
       PhabricatorEventType::TYPE_DIFFERENTIAL_WILLMARKGENERATED,
       array(
