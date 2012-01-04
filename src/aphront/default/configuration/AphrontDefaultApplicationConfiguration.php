@@ -51,6 +51,7 @@ class AphrontDefaultApplicationConfiguration
       ),
       '/file/' => array(
         '$' => 'PhabricatorFileListController',
+        'filter/(?P<filter>\w+)/$' => 'PhabricatorFileListController',
         'upload/$' => 'PhabricatorFileUploadController',
         'dropupload/$' => 'PhabricatorFileDropUploadController',
         '(?P<view>info)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
@@ -69,7 +70,6 @@ class AphrontDefaultApplicationConfiguration
       ),
       '/phid/' => array(
         '$' => 'PhabricatorPHIDLookupController',
-        'list/$' => 'PhabricatorPHIDListController',
       ),
       '/people/' => array(
         '$' => 'PhabricatorPeopleListController',
@@ -83,6 +83,7 @@ class AphrontDefaultApplicationConfiguration
         '$' => 'PhabricatorConduitConsoleController',
         'method/(?P<method>[^/]+)$' => 'PhabricatorConduitConsoleController',
         'log/$' => 'PhabricatorConduitLogController',
+        'log/view/(?P<view>[^/]+)/$' => 'PhabricatorConduitLogController',
         'token/$' => 'PhabricatorConduitTokenController',
       ),
       '/api/(?P<method>[^/]+)$' => 'PhabricatorConduitAPIController',
@@ -172,9 +173,6 @@ class AphrontDefaultApplicationConfiguration
 
       '/T(?P<id>\d+)$' => 'ManiphestTaskDetailController',
 
-      '/github-post-receive/(?P<id>\d+)/(?P<token>[^/]+)/$'
-        => 'PhabricatorRepositoryGitHubPostReceiveController',
-
       '/repository/' => array(
         '$'                     => 'PhabricatorRepositoryListController',
         'create/$'              => 'PhabricatorRepositoryCreateController',
@@ -197,6 +195,7 @@ class AphrontDefaultApplicationConfiguration
 
       '/project/' => array(
         '$' => 'PhabricatorProjectListController',
+        'filter/(?P<filter>[^/]+)/$' => 'PhabricatorProjectListController',
         'edit/(?P<id>\d+)/$' => 'PhabricatorProjectProfileEditController',
         'view/(?P<id>\d+)/(?:(?P<page>\w+)/)?$'
           => 'PhabricatorProjectProfileController',
@@ -274,6 +273,10 @@ class AphrontDefaultApplicationConfiguration
         'rule/(?:(?P<id>\d+)/)?$' => 'HeraldRuleController',
         'delete/(?P<id>\d+)/$' => 'HeraldDeleteController',
         'test/$' => 'HeraldTestConsoleController',
+        'all/' => array(
+          '$' => 'HeraldAllRulesController',
+          'view/(?P<view>[^/]+)/$' => 'HeraldAllRulesController',
+        ),
         'transcript/$' => 'HeraldTranscriptListController',
         'transcript/(?P<id>\d+)/(?:(?P<filter>\w+)/)?$'
           => 'HeraldTranscriptController',
@@ -291,6 +294,15 @@ class AphrontDefaultApplicationConfiguration
         'new/$' => 'PhabricatorOwnersEditController',
         'package/(?P<id>\d+)/$' => 'PhabricatorOwnersDetailController',
         'delete/(?P<id>\d+)/$' => 'PhabricatorOwnersDeleteController',
+        'related/' => array(
+          '$' => 'PhabricatorOwnerRelatedListController',
+          'view/(?P<view>[^/]+)/$' => 'PhabricatorOwnerRelatedListController',
+        ),
+      ),
+
+      '/audit/' => array(
+        '$' => 'PhabricatorAuditEditController',
+        'edit/$' => 'PhabricatorAuditEditController',
       ),
 
       '/xhpast/' => array(
@@ -310,10 +322,9 @@ class AphrontDefaultApplicationConfiguration
       '/status/$' => 'PhabricatorStatusController',
 
       '/paste/' => array(
-        '$' => 'PhabricatorPasteCreateController',
-        'list/' => 'PhabricatorPasteListController',
+        '$' => 'PhabricatorPasteListController',
+        'filter/(?P<filter>\w+)/$' => 'PhabricatorPasteListController',
       ),
-
       '/P(?P<id>\d+)$' => 'PhabricatorPasteViewController',
 
       '/help/' => array(
@@ -355,6 +366,7 @@ class AphrontDefaultApplicationConfiguration
         'history/(?P<slug>.+/)$'  => 'PhrictionHistoryController',
 
         'edit/(?:(?P<id>\d+)/)?$' => 'PhrictionEditController',
+        'delete/(?P<id>\d+)/$'    => 'PhrictionDeleteController',
 
         'preview/$' => 'PhrictionDocumentPreviewController',
         'diff/(?P<id>\d+)/$' => 'PhrictionDiffController',

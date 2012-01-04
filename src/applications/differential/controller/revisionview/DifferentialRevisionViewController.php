@@ -214,6 +214,7 @@ class DifferentialRevisionViewController extends DifferentialController {
     $diff_history->setSelectedVersusDiffID($diff_vs);
     $diff_history->setSelectedDiffID($target->getID());
     $diff_history->setSelectedWhitespace($whitespace);
+    $diff_history->setUser($user);
 
     $local_view = new DifferentialLocalCommitsView();
     $local_view->setUser($user);
@@ -243,8 +244,6 @@ class DifferentialRevisionViewController extends DifferentialController {
       $comment_form->setActionURI('/differential/comment/save/');
       $comment_form->setUser($user);
       $comment_form->setDraft($draft);
-
-      $this->updateViewTime($user->getPHID(), $revision->getPHID());
     }
 
     $pane_id = celerity_generate_unique_node_id();
@@ -536,16 +535,6 @@ class DifferentialRevisionViewController extends DifferentialController {
     $changesets = msort($changesets, 'getSortKey');
 
     return array($changesets, $vs_map, $refs);
-  }
-
-  private function updateViewTime($user_phid, $revision_phid) {
-    $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
-    $view_time =
-      id(new DifferentialViewTime())
-        ->setViewerPHID($user_phid)
-        ->setObjectPHID($revision_phid)
-        ->setViewTime(time())
-        ->replace();
   }
 
   private function loadAuxiliaryFieldsAndProperties(

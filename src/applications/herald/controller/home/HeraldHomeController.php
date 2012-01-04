@@ -19,9 +19,19 @@
 class HeraldHomeController extends HeraldController {
 
   private $view;
+  private $filter;
 
   public function willProcessRequest(array $data) {
     $this->view = idx($data, 'view');
+    $this->setFilter($this->view);
+  }
+
+  public function getFilter() {
+    return $this->filter;
+  }
+  public function setFilter($filter) {
+    $this->filter = 'view/'.$filter;
+    return $this;
   }
 
   public function processRequest() {
@@ -44,87 +54,19 @@ class HeraldHomeController extends HeraldController {
     $handles = id(new PhabricatorObjectHandleData($need_phids))
       ->loadHandles();
 
-    $type = 'differential';
+    $list_view = id(new HeraldRuleListView())
+      ->setRules($rules)
+      ->setHandles($handles)
+      ->setMap($map)
+      ->setAllowCreation(true)
+      ->setView($this->view);
+    $panel = $list_view->render();
 
-    $rows = array();
-    foreach ($rules as $rule) {
-      $owner = $handles[$rule->getAuthorPHID()]->renderLink();
-
-      $name = phutil_render_tag(
-        'a',
-        array(
-          'href' => '/herald/rule/'.$rule->getID().'/',
-        ),
-        phutil_escape_html($rule->getName()));
-
-      $delete = 'delete';
-      $delete = javelin_render_tag(
-        'a',
-        array(
-          'href' => '/herald/delete/'.$rule->getID().'/',
-          'sigil' => 'workflow',
-          'class' => 'button small grey',
-        ),
-        'Delete');
-
-      $rows[] = array(
-        $map[$rule->getContentType()],
-        $owner,
-        $name,
-        $delete,
-      );
-    }
-
-    $rules_for = phutil_escape_html($map[$this->view]);
-
-    $table = new AphrontTableView($rows);
-    $table->setNoDataString(
-      "No matching subscription rules for {$rules_for}.");
-
-    $table->setHeaders(
-      array(
-        'Type',
-        'Owner',
-        'Rule Name',
-        '',
-      ));
-    $table->setColumnClasses(
-      array(
-        '',
-        '',
-        'wide wrap pri',
-        'action'
-      ));
-
-    $panel = new AphrontPanelView();
-    $panel->setHeader("Herald Rules for {$rules_for}");
-    $panel->setCreateButton(
-      'Create New Herald Rule',
-      '/herald/new/'.$this->view.'/');
-    $panel->appendChild($table);
-
-    $sidenav = new AphrontSideNavView();
-    $sidenav->appendChild($panel);
-
-    foreach ($map as $key => $value) {
-      $sidenav->addNavItem(
-        phutil_render_tag(
-          'a',
-          array(
-            'href' => '/herald/view/'.$key.'/',
-            'class' => ($key == $this->view)
-              ? 'aphront-side-nav-selected'
-              : null,
-          ),
-          phutil_escape_html($value)));
-    }
 
     return $this->buildStandardPageResponse(
-      $sidenav,
+      $panel,
       array(
         'title' => 'Herald',
-        'tab' => 'rules',
       ));
   }
-
 }

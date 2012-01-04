@@ -31,7 +31,7 @@ class AphrontIsolatedDatabaseConnectionTestCase
   public function testIsolation() {
     $conn = $this->newIsolatedConnection();
 
-    $test_phid = 'PHID-TEST-'.sha1(mt_rand());
+    $test_phid = 'PHID-TEST-'.Filesystem::readRandomCharacters(20);
 
     queryfx(
       $conn,
@@ -64,7 +64,15 @@ class AphrontIsolatedDatabaseConnectionTestCase
 
     $this->assertEqual(true, (bool)$id1, 'ID1 exists.');
     $this->assertEqual(true, (bool)$id2, 'ID2 exists.');
-    $this->assertEqual(true, $id1 != $id2, 'IDs are distinct.');
+    $this->assertEqual(
+      true,
+      $id1 != $id2,
+      "IDs '{$id1}' and '{$id2}' are distinct.");
+  }
+
+  public function testDeletePermitted() {
+    $conn = $this->newIsolatedConnection();
+    queryfx($conn, 'DELETE');
   }
 
   private function newIsolatedConnection() {

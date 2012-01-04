@@ -67,6 +67,11 @@ class PhabricatorConduitAPIController
       if (isset($_REQUEST['params']) && is_array($_REQUEST['params'])) {
         $params_post = $request->getArr('params');
         foreach ($params_post as $key => $value) {
+          if ($value == '') {
+            // Interpret empty string null (e.g., the user didn't type anything
+            // into the box).
+            $value = 'null';
+          }
           $decoded_value = json_decode($value, true);
           if ($decoded_value === null && strtolower($value) != 'null') {
             // When json_decode() fails, it returns null. This almost certainly
@@ -113,6 +118,10 @@ class PhabricatorConduitAPIController
         // If we've explicitly authenticated the user here and either done
         // CSRF validation or are using a non-web authentication mechanism.
         $allow_unguarded_writes = true;
+
+        if (isset($metadata['actAsUser'])) {
+          $this->actAsUser($api_request, $metadata['actAsUser']);
+        }
       }
 
       if ($method_handler->shouldAllowUnguardedWrites()) {
@@ -123,6 +132,7 @@ class PhabricatorConduitAPIController
         if ($allow_unguarded_writes) {
           $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
         }
+
         try {
           $result = $method_handler->executeMethod($api_request);
           $error_code = null;
@@ -130,7 +140,11 @@ class PhabricatorConduitAPIController
         } catch (ConduitException $ex) {
           $result = null;
           $error_code = $ex->getMessage();
-          $error_info = $method_handler->getErrorDescription($error_code);
+          if ($ex->getErrorDescription()) {
+            $error_info = $ex->getErrorDescription();
+          } else {
+            $error_info = $method_handler->getErrorDescription($error_code);
+          }
         }
         if ($allow_unguarded_writes) {
           unset($unguarded);
@@ -185,6 +199,34 @@ class PhabricatorConduitAPIController
           ->setMimeType('application/json')
           ->setContent('for(;;);'.json_encode($result));
     }
+  }
+
+  /**
+   * Change the api request user to the user that we want to act as.
+   * Only admins can use actAsUser
+   *
+   * @param   ConduitAPIRequest Request being executed.
+   * @param   string            The username of the user we want to act as
+   */
+  private function actAsUser(
+    ConduitAPIRequest $api_request,
+    $user_name) {
+
+    if (!$api_request->getUser()->getIsAdmin()) {
+      throw new Exception("Only administrators can use actAsUser");
+    }
+
+    $user = id(new PhabricatorUser())->loadOneWhere(
+      'userName = %s',
+      $user_name);
+
+    if (!$user) {
+      throw new Exception(
+        "The actAsUser username '{$user_name}' is not a valid user."
+      );
+    }
+
+    $api_request->setUser($user);
   }
 
   /**

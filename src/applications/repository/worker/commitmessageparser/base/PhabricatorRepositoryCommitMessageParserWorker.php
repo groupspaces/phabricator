@@ -96,11 +96,17 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
           $commit->getPHID());
 
         if ($revision->getStatus() != DifferentialRevisionStatus::COMMITTED) {
+          $message = null;
+          $committer = $data->getCommitDetail('authorPHID');
+          if (!$committer) {
+            $committer = $revision->getAuthorPHID();
+            $message = 'Change committed by '.$data->getAuthorName().'.';
+          }
           $editor = new DifferentialCommentEditor(
             $revision,
-            $revision->getAuthorPHID(),
+            $committer,
             DifferentialAction::ACTION_COMMIT);
-          $editor->save();
+          $editor->setMessage($message)->save();
         }
       }
     }

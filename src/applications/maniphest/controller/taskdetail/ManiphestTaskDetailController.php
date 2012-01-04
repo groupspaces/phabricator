@@ -47,9 +47,6 @@ class ManiphestTaskDetailController extends ManiphestController {
       $parent_task = id(new ManiphestTask())->load($workflow);
     }
 
-    $extensions = ManiphestTaskExtensions::newExtensions();
-    $aux_fields = $extensions->getAuxiliaryFieldSpecifications();
-
     $transactions = id(new ManiphestTransaction())->loadAllWhere(
       'taskID = %d ORDER BY id ASC',
       $task->getID());
@@ -137,17 +134,17 @@ class ManiphestTaskDetailController extends ManiphestController {
       $dict['Projects'] = '<em>None</em>';
     }
 
+    $extensions = ManiphestTaskExtensions::newExtensions();
+    $aux_fields = $extensions->getAuxiliaryFieldSpecifications();
     if ($aux_fields) {
+      $task->loadAndAttachAuxiliaryAttributes();
       foreach ($aux_fields as $aux_field) {
-        $attribute = $task->loadAuxiliaryAttribute(
-          $aux_field->getAuxiliaryKey()
-        );
-
-        if ($attribute) {
-          $aux_field->setValue($attribute->getValue());
+        $aux_key = $aux_field->getAuxiliaryKey();
+        $aux_field->setValue($task->getAuxiliaryAttribute($aux_key));
+        $value = $aux_field->renderForDetailView();
+        if (strlen($value)) {
+          $dict[$aux_field->getLabel()] = $value;
         }
-
-        $dict[$aux_field->getLabel()] = $aux_field->renderForDetailView();
       }
     }
 
@@ -334,6 +331,17 @@ class ManiphestTaskDetailController extends ManiphestController {
 
     $panel_id = celerity_generate_unique_node_id();
 
+    $is_serious = PhabricatorEnv::getEnvConfig('phabricator.serious-business');
+
+    if ($is_serious) {
+      // Prevent tasks from being closed "out of spite" in serious business
+      // installs.
+      unset($resolution_types[ManiphestTaskStatus::STATUS_CLOSED_SPITE]);
+    }
+
+    $remarkup_href = PhabricatorEnv::getDoclink(
+      'article/Remarkup_Reference.html');
+
     $comment_form = new AphrontFormView();
     $comment_form
       ->setUser($user)
@@ -396,6 +404,15 @@ class ManiphestTaskDetailController extends ManiphestController {
           ->setLabel('Comments')
           ->setName('comments')
           ->setValue($draft_text)
+          ->setCaption(
+            phutil_render_tag(
+              'a',
+              array(
+                'href' => $remarkup_href,
+                'tabindex' => '-1',
+                'target' => '_blank',
+              ),
+              'Formatting Reference'))
           ->setID('transaction-comments'))
       ->appendChild(
         id(new AphrontFormDragAndDropUploadControl())
@@ -405,7 +422,7 @@ class ManiphestTaskDetailController extends ManiphestController {
           ->setActivatedClass('aphront-panel-view-drag-and-drop'))
       ->appendChild(
         id(new AphrontFormSubmitControl())
-          ->setValue('Avast!'));
+          ->setValue($is_serious ? 'Submit' : 'Avast!'));
 
     $control_map = array(
       ManiphestTransactionType::TYPE_STATUS   => 'resolution',
@@ -453,7 +470,7 @@ class ManiphestTaskDetailController extends ManiphestController {
     $comment_panel->appendChild($comment_form);
     $comment_panel->setID($panel_id);
     $comment_panel->addClass('aphront-panel-accent');
-    $comment_panel->setHeader('Weigh In');
+    $comment_panel->setHeader($is_serious ? 'Add Comment' : 'Weigh In');
 
     $preview_panel =
       '<div class="aphront-panel-preview">

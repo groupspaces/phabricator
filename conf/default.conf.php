@@ -65,6 +65,12 @@ return array(
   // attack difficult, but it is viable unless you isolate the file domain.
   'security.alternate-file-domain'  => null,
 
+  // Default key for HMAC digests where the key is not important (i.e., the
+  // hash itself is secret). You can change this if you want (to any other
+  // string), but doing so will break existing sessions and CSRF tokens.
+  'security.hmac-key' => '[D\t~Y7eNmnQGJ;rnH6aF;m2!vJ8@v8C=Cs:aQS\.Qw',
+
+
 // -- DarkConsole ----------------------------------------------------------- //
 
   // DarkConsole is a administrative debugging/profiling tool built into
@@ -444,6 +450,14 @@ return array(
   // seeing which setting loads faster and feels better.
   'tokenizer.ondemand'          => false,
 
+  // By default, Phabricator includes some silly nonsense in the UI, such as
+  // a submit button called "Clowncopterize" in Differential and a call to
+  // "Leap Into Action". If you'd prefer more traditional UI strings like
+  // "Submit", you can set this flag to disable most of the jokes and easter
+  // eggs.
+  'phabricator.serious-business' => false,
+
+
 // -- Files ----------------------------------------------------------------- //
 
   // Lists which uploaded file types may be viewed in the browser. If a file
@@ -549,7 +563,8 @@ return array(
   // against each regexp in order until one matches. The default configuration
   // uses a width of 100 for Java and 80 for other languages. Note that 80 is
   // the greatest column width of all time. Changes here will not be immediately
-  // reflected in old revisions unless you purge the render cache.
+  // reflected in old revisions unless you purge the changeset render cache
+  // (with `./scripts/util/purge_cache.php --changesets`).
   'differential.wordwrap' => array(
     '/\.java$/' => 100,
     '/.*/'      => 80,
@@ -728,6 +743,8 @@ return array(
     // Example: Treat all '*.x.bak' file as '.x'. NOTE: we map to capturing
     // group 1 by specifying the mapping as "1".
     // '@\\.([^.]+)\\.bak$@' => 1,
+
+    '@\.arcconfig$@' => 'js',
   ),
 
 );

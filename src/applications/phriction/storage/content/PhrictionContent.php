@@ -31,4 +31,7 @@ class PhrictionContent extends PhrictionDAO {
   protected $content;
   protected $description;
 
+  protected $changeType;
+  protected $changeRef;
+
 }

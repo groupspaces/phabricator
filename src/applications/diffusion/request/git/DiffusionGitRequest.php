@@ -40,7 +40,7 @@ class DiffusionGitRequest extends DiffusionRequest {
     $this->path = implode('/', $parts);
 
     if ($this->repository) {
-      $local_path = $this->repository->getDetail('local-path');
+      $repository = $this->repository;
 
       // TODO: This is not terribly efficient and does not produce terribly
       // good error messages, but it seems better to put error handling code
@@ -52,19 +52,18 @@ class DiffusionGitRequest extends DiffusionRequest {
       // message to indicate whether they've typed in some bogus branch and/or
       // followed a bad link, or misconfigured the default branch in the
       // Repository tool.
-      list($this->stableCommitName) = execx(
-        '(cd %s && git rev-parse --verify %s)',
-        $local_path,
+      list($this->stableCommitName) = $repository->execxLocalCommand(
+        'rev-parse --verify %s/%s',
+        DiffusionBranchInformation::DEFAULT_GIT_REMOTE,
         $branch);
 
       if ($this->commit) {
-        list($commit) = execx(
-          '(cd %s && git rev-parse --verify %s)',
-          $local_path,
+        list($commit) = $repository->execxLocalCommand(
+          'rev-parse --verify %s',
           $this->commit);
 
         // Beyond verifying them, expand commit short forms to full 40-character
-        // sha1s.
+        // hashes.
         $this->commit = trim($commit);
 
         // If we have a commit, overwrite the branch commit with the more
@@ -76,9 +75,8 @@ class DiffusionGitRequest extends DiffusionRequest {
   TODO: Unclear if this is actually a good idea or not; it breaks commit views
   at the very least.
 
-        list($contains) = execx(
-          '(cd %s && git branch --contains %s)',
-          $local_path,
+        list($contains) = $repository->execxLocalCommand(
+          'branch --contains %s',
           $this->commit);
         $contains = array_filter(explode("\n", $contains));
         $found = false;
@@ -106,7 +104,7 @@ class DiffusionGitRequest extends DiffusionRequest {
       return $this->branch;
     }
     if ($this->repository) {
-      return $this->repository->getDetail('default-branch', 'origin/master');
+      return $this->repository->getDetail('default-branch', 'master');
     }
     throw new Exception("Unable to determine branch!");
   }
@@ -120,7 +118,8 @@ class DiffusionGitRequest extends DiffusionRequest {
     if ($this->commit) {
       return $this->commit;
     }
-    return $this->getBranch();
+    $remote = DiffusionBranchInformation::DEFAULT_GIT_REMOTE;
+    return $remote.'/'.$this->getBranch();
   }
 
   public function getStableCommitName() {
@@ -132,7 +131,17 @@ class DiffusionGitRequest extends DiffusionRequest {
   }
 
   private function decodeBranchName($branch) {
-    return str_replace(':', '/', $branch);
+    $branch = str_replace(':', '/', $branch);
+
+    // Backward compatibility for older-style URIs which had an explicit
+    // "origin" remote in the branch name. If a remote is specified, strip it
+    // away.
+    if (strpos($branch, '/') !== false) {
+      $parts = explode('/', $branch);
+      $branch = end($parts);
+    }
+
+    return $branch;
   }
 
   private function encodeBranchName($branch) {

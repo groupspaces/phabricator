@@ -130,6 +130,8 @@ class PhabricatorSetup {
       'hash',
       'json',
       'openssl',
+      'mbstring',
+      'iconv',
 
       // There is a chance we might not need this, but some configurations (like
       // Amazon SES) will require it. Just mark it 'required' since it's widely
@@ -399,12 +401,13 @@ class PhabricatorSetup {
       queryfx($conn_raw, 'SELECT 1');
       self::write(" okay  Connection successful!\n");
     } catch (AphrontQueryConnectionException $ex) {
+      $message = $ex->getMessage();
       self::writeFailure();
       self::write(
-        "Setup failure! Unable to connect to MySQL database ".
-        "'{$conn_host}' with user '{$conn_user}'. Edit Phabricator ".
-        "configuration keys 'mysql.user', 'mysql.host' and 'mysql.pass' to ".
-        "enable Phabricator to connect.");
+        "Setup failure! MySQL exception: {$message} \n".
+        "Edit Phabricator configuration keys 'mysql.user', ".
+        "'mysql.host' and 'mysql.pass' to enable Phabricator ".
+        "to connect.");
       return;
     }
 

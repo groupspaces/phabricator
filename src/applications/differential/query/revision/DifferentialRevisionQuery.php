@@ -38,6 +38,14 @@ final class DifferentialRevisionQuery {
   const STATUS_ANY      = 'status-any';
   const STATUS_OPEN     = 'status-open';
 
+  private $authors = array();
+  private $ccs = array();
+  private $reviewers = array();
+  private $revIDs = array();
+  private $phids = array();
+  private $subscribers = array();
+  private $responsibles = array();
+
   private $order            = 'order-modified';
   const ORDER_MODIFIED      = 'order-modified';
   const ORDER_CREATED       = 'order-created';
@@ -53,7 +61,10 @@ final class DifferentialRevisionQuery {
   private $limit  = 1000;
   private $offset = 0;
 
-  private $needRelationships = false;
+  private $needRelationships  = false;
+  private $needActiveDiffs    = false;
+  private $needDiffIDs        = false;
+  private $needCommitPHIDs    = false;
 
 
 /* -(  Query Configuration  )------------------------------------------------ */
@@ -77,6 +88,46 @@ final class DifferentialRevisionQuery {
     return $this;
   }
 
+  /**
+   * Filter results to revisions authored by one of the given PHIDs.
+   *
+   * @param array List of PHIDs of authors
+   * @return this
+   * @task config
+   */
+  public function withAuthors(array $author_phids) {
+    $this->authors = $author_phids;
+    return $this;
+  }
+
+  /**
+   * Filter results to revisions which CC one of the listed people. Calling this
+   * function will clear anything set by previous calls to @{method:withCCs}.
+   *
+   * @param array List of PHIDs of subscribers
+   * @return this
+   * @task config
+   */
+  public function withCCs(array $cc_phids) {
+    $this->ccs = $cc_phids;
+    return $this;
+  }
+
+
+  /**
+   * Filter results to revisions that have one of the provided PHIDs as
+   * reviewers. Calling this function will clear anything set by previous calls
+   * to @{method:withReviewers}.
+   *
+   * @param array List of PHIDs of reviewers
+   * @return this
+   * @task config
+   */
+  public function withReviewers(array $reviewer_phids) {
+    $this->reviewers = $reviewer_phids;
+    return $this;
+  }
+
 
   /**
    * Filter results to revisions with a given status. Provide a class constant,
@@ -88,6 +139,60 @@ final class DifferentialRevisionQuery {
    */
   public function withStatus($status_constant) {
     $this->status = $status_constant;
+    return $this;
+  }
+
+
+  /**
+   * Filter results to only return revisions whose ids are in the given set.
+   *
+   * @param array List of revision ids
+   * @return this
+   * @task config
+   */
+  public function withIDs(array $ids) {
+    $this->revIDs = $ids;
+    return $this;
+  }
+
+
+  /**
+   * Filter results to only return revisions whose PHIDs are in the given set.
+   *
+   * @param array List of revision PHIDs
+   * @return this
+   * @task config
+   */
+  public function withPHIDs(array $phids) {
+    $this->phids = $phids;
+    return $this;
+  }
+
+
+  /**
+   * Given a set of users, filter results to return only revisions they are
+   * responsible for (i.e., they are either authors or reviewers).
+   *
+   * @param array List of user PHIDs.
+   * @return this
+   * @task config
+   */
+  public function withResponsibleUsers(array $responsible_phids) {
+    $this->responsibles = $responsible_phids;
+    return $this;
+  }
+
+
+  /**
+   * Filter results to only return revisions with a given set of subscribers
+   * (i.e., they are authors, reviewers or CC'd).
+   *
+   * @param array List of user PHIDs.
+   * @return this
+   * @task config
+   */
+  public function withSubscribers(array $subscriber_phids) {
+    $this->subscribers = $subscriber_phids;
     return $this;
   }
 
@@ -143,6 +248,48 @@ final class DifferentialRevisionQuery {
   }
 
 
+  /**
+   * Set whether or not the query should load the active diff for each
+   * revision.
+   *
+   * @param bool True to load and attach diffs.
+   * @return this
+   * @task config
+   */
+  public function needActiveDiffs($need_active_diffs) {
+    $this->needActiveDiffs = $need_active_diffs;
+    return $this;
+  }
+
+
+  /**
+   * Set whether or not the query should load the associated commit PHIDs for
+   * each revision.
+   *
+   * @param bool True to load and attach diffs.
+   * @return this
+   * @task config
+   */
+  public function needCommitPHIDs($need_commit_phids) {
+    $this->needCommitPHIDs = $need_commit_phids;
+    return $this;
+  }
+
+
+  /**
+   * Set whether or not the query should load associated diff IDs for each
+   * revision.
+   *
+   * @param bool True to load and attach diff IDs.
+   * @return this
+   * @task config
+   */
+  public function needDiffIDs($need_diff_ids) {
+    $this->needDiffIDs = $need_diff_ids;
+    return $this;
+  }
+
+
 /* -(  Query Execution  )---------------------------------------------------- */
 
 
@@ -157,6 +304,95 @@ final class DifferentialRevisionQuery {
     $table = new DifferentialRevision();
     $conn_r = $table->establishConnection('r');
 
+    if ($this->shouldUseResponsibleFastPath()) {
+      $data = $this->loadDataUsingResponsibleFastPath();
+    } else {
+      $data = $this->loadData();
+    }
+
+    $revisions = $table->loadAllFromArray($data);
+
+    if ($revisions) {
+      if ($this->needRelationships) {
+        $this->loadRelationships($conn_r, $revisions);
+      }
+
+      if ($this->needCommitPHIDs) {
+        $this->loadCommitPHIDs($conn_r, $revisions);
+      }
+
+      if ($this->needActiveDiffs || $this->needDiffIDs) {
+        $this->loadDiffIDs($conn_r, $revisions);
+      }
+
+      if ($this->needActiveDiffs) {
+        $this->loadActiveDiffs($conn_r, $revisions);
+      }
+    }
+
+    return $revisions;
+  }
+
+
+  /**
+   * Determine if we should execute an optimized, fast-path query to fetch
+   * open revisions for one responsible user. This is used by the Differential
+   * dashboard and much faster when executed as a UNION ALL than with JOIN
+   * and WHERE, which is why we special case it.
+   */
+  private function shouldUseResponsibleFastPath() {
+    if ((count($this->responsibles) == 1) &&
+        ($this->status == self::STATUS_OPEN) &&
+        ($this->order == self::ORDER_MODIFIED) &&
+        !$this->offset &&
+        !$this->limit &&
+        !$this->subscribers &&
+        !$this->reviewers &&
+        !$this->ccs &&
+        !$this->authors &&
+        !$this->revIDs &&
+        !$this->phids) {
+      return true;
+    }
+    return false;
+  }
+
+
+  private function loadDataUsingResponsibleFastPath() {
+    $table = new DifferentialRevision();
+    $conn_r = $table->establishConnection('r');
+
+    $responsible_phid = reset($this->responsibles);
+    $open_statuses = array(
+      DifferentialRevisionStatus::NEEDS_REVIEW,
+      DifferentialRevisionStatus::NEEDS_REVISION,
+      DifferentialRevisionStatus::ACCEPTED,
+    );
+
+    return queryfx_all(
+      $conn_r,
+      'SELECT * FROM %T WHERE authorPHID = %s AND status IN (%Ld)
+        UNION ALL
+       SELECT r.* FROM %T r JOIN %T rel
+        ON rel.revisionID = r.id
+        AND rel.relation = %s
+        AND rel.objectPHID = %s
+        WHERE r.status IN (%Ld) ORDER BY dateModified DESC',
+      $table->getTableName(),
+      $responsible_phid,
+      $open_statuses,
+
+      $table->getTableName(),
+      DifferentialRevision::RELATIONSHIP_TABLE,
+      DifferentialRevision::RELATION_REVIEWER,
+      $responsible_phid,
+      $open_statuses);
+  }
+
+  private function loadData() {
+    $table = new DifferentialRevision();
+    $conn_r = $table->establishConnection('r');
+
     $select = qsprintf(
       $conn_r,
       'SELECT r.* FROM %T r',
@@ -167,13 +403,16 @@ final class DifferentialRevisionQuery {
     $group_by = $this->buildGroupByClause($conn_r);
     $order_by = $this->buildOrderByClause($conn_r);
 
-    $limit = qsprintf(
-      $conn_r,
-      'LIMIT %d, %d',
-      (int)$this->offset,
-      $this->limit);
+    $limit = '';
+    if ($this->offset || $this->limit) {
+      $limit = qsprintf(
+        $conn_r,
+        'LIMIT %d, %d',
+        (int)$this->offset,
+        $this->limit);
+    }
 
-    $data = queryfx_all(
+    return queryfx_all(
       $conn_r,
       '%Q %Q %Q %Q %Q %Q',
       $select,
@@ -182,26 +421,6 @@ final class DifferentialRevisionQuery {
       $group_by,
       $order_by,
       $limit);
-
-    $revisions = $table->loadAllFromArray($data);
-
-    if ($revisions && $this->needRelationships) {
-      $relationships = queryfx_all(
-        $conn_r,
-        'SELECT * FROM %T WHERE revisionID in (%Ld) ORDER BY sequence',
-        DifferentialRevision::RELATIONSHIP_TABLE,
-        mpull($revisions, 'getID'));
-      $relationships = igroup($relationships, 'revisionID');
-      foreach ($revisions as $revision) {
-        $revision->attachRelationships(
-          idx(
-            $relationships,
-            $revision->getID(),
-            array()));
-      }
-    }
-
-    return $revisions;
   }
 
 
@@ -219,6 +438,53 @@ final class DifferentialRevisionQuery {
         $conn_r,
         'JOIN %T p ON p.revisionID = r.id',
         $path_table->getTableName());
+    }
+
+    if ($this->ccs) {
+      $joins[] = qsprintf(
+        $conn_r,
+        'JOIN %T cc_rel ON cc_rel.revisionID = r.id '.
+        'AND cc_rel.relation = %s '.
+        'AND cc_rel.objectPHID in (%Ls)',
+        DifferentialRevision::RELATIONSHIP_TABLE,
+        DifferentialRevision::RELATION_SUBSCRIBED,
+        $this->ccs);
+    }
+
+    if ($this->reviewers) {
+      $joins[] = qsprintf(
+        $conn_r,
+        'JOIN %T reviewer_rel ON reviewer_rel.revisionID = r.id '.
+        'AND reviewer_rel.relation = %s '.
+        'AND reviewer_rel.objectPHID in (%Ls)',
+        DifferentialRevision::RELATIONSHIP_TABLE,
+        DifferentialRevision::RELATION_REVIEWER,
+        $this->reviewers);
+    }
+
+    if ($this->subscribers) {
+      $joins[] = qsprintf(
+        $conn_r,
+        'JOIN %T sub_rel ON sub_rel.revisionID = r.id '.
+        'AND sub_rel.relation IN (%Ls) '.
+        'AND sub_rel.objectPHID in (%Ls)',
+        DifferentialRevision::RELATIONSHIP_TABLE,
+        array(
+          DifferentialRevision::RELATION_SUBSCRIBED,
+          DifferentialRevision::RELATION_REVIEWER,
+        ),
+        $this->subscribers);
+    }
+
+    if ($this->responsibles) {
+      $joins[] = qsprintf(
+        $conn_r,
+        'LEFT JOIN %T responsibles_rel ON responsibles_rel.revisionID = r.id '.
+        'AND responsibles_rel.relation = %s '.
+        'AND responsibles_rel.objectPHID in (%Ls)',
+        DifferentialRevision::RELATIONSHIP_TABLE,
+        DifferentialRevision::RELATION_REVIEWER,
+        $this->responsibles);
     }
 
     $joins = implode(' ', $joins);
@@ -245,6 +511,34 @@ final class DifferentialRevisionQuery {
       }
       $path_clauses = '('.implode(' OR ', $path_clauses).')';
       $where[] = $path_clauses;
+    }
+
+    if ($this->authors) {
+      $where[] = qsprintf(
+        $conn_r,
+        'authorPHID IN (%Ls)',
+        $this->authors);
+    }
+
+    if ($this->revIDs) {
+      $where[] = qsprintf(
+        $conn_r,
+        'id IN (%Ld)',
+        $this->revIDs);
+    }
+
+    if ($this->phids) {
+      $where[] = qsprintf(
+        $conn_r,
+        'phid IN (%Ls)',
+        $this->phids);
+    }
+
+    if ($this->responsibles) {
+      $where[] = qsprintf(
+        $conn_r,
+        '(responsibles_rel.objectPHID IS NOT NULL OR r.authorPHID IN (%Ls))',
+        $this->responsibles);
     }
 
     switch ($this->status) {
@@ -279,7 +573,14 @@ final class DifferentialRevisionQuery {
    * @task internal
    */
   private function buildGroupByClause($conn_r) {
-    $needs_distinct = (count($this->pathIDs) > 1);
+    $join_triggers = array_merge(
+      $this->pathIDs,
+      $this->ccs,
+      $this->reviewers,
+      $this->subscribers,
+      $this->responsibles);
+
+    $needs_distinct = (count($join_triggers) > 1);
 
     if ($needs_distinct) {
       return 'GROUP BY r.id';
@@ -306,6 +607,78 @@ final class DifferentialRevisionQuery {
         return 'ORDER BY p.epoch DESC';
       default:
         throw new Exception("Unknown query order constant '{$this->order}'.");
+    }
+  }
+
+  private function loadRelationships($conn_r, array $revisions) {
+    $relationships = queryfx_all(
+      $conn_r,
+      'SELECT * FROM %T WHERE revisionID in (%Ld) ORDER BY sequence',
+      DifferentialRevision::RELATIONSHIP_TABLE,
+      mpull($revisions, 'getID'));
+    $relationships = igroup($relationships, 'revisionID');
+    foreach ($revisions as $revision) {
+      $revision->attachRelationships(
+        idx(
+          $relationships,
+          $revision->getID(),
+          array()));
+    }
+  }
+
+  private function loadCommitPHIDs($conn_r, array $revisions) {
+    $commit_phids = queryfx_all(
+      $conn_r,
+      'SELECT * FROM %T WHERE revisionID IN (%Ld)',
+      DifferentialRevision::TABLE_COMMIT,
+      mpull($revisions, 'getID'));
+    $commit_phids = igroup($commit_phids, 'revisionID');
+    foreach ($revisions as $revision) {
+      $phids = idx($commit_phids, $revision->getID(), array());
+      $phids = ipull($phids, 'commitPHID');
+      $revision->attachCommitPHIDs($phids);
+    }
+  }
+
+  private function loadDiffIDs($conn_r, array $revisions) {
+    $diff_table = new DifferentialDiff();
+
+    $diff_ids = queryfx_all(
+      $conn_r,
+      'SELECT revisionID, id FROM %T WHERE revisionID IN (%Ld)
+        ORDER BY id DESC',
+      $diff_table->getTableName(),
+      mpull($revisions, 'getID'));
+    $diff_ids = igroup($diff_ids, 'revisionID');
+
+    foreach ($revisions as $revision) {
+      $ids = idx($diff_ids, $revision->getID(), array());
+      $ids = ipull($ids, 'id');
+      $revision->attachDiffIDs($ids);
+    }
+  }
+
+  private function loadActiveDiffs($conn_r, array $revisions) {
+    $diff_table = new DifferentialDiff();
+
+    $load_ids = array();
+    foreach ($revisions as $revision) {
+      $diffs = $revision->getDiffIDs();
+      if ($diffs) {
+        $load_ids[] = max($diffs);
+      }
+    }
+
+    $active_diffs = array();
+    if ($load_ids) {
+      $active_diffs = $diff_table->loadAllWhere(
+        'id IN (%Ld)',
+        $load_ids);
+    }
+
+    $active_diffs = mpull($active_diffs, null, 'getRevisionID');
+    foreach ($revisions as $revision) {
+      $revision->attachActiveDiff(idx($active_diffs, $revision->getID()));
     }
   }
 
