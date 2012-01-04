@@ -531,6 +531,7 @@ class DifferentialChangesetParser {
       }
     }
 
+    $changeset = $this->changeset;
     $this->applyIntraline(
       $this->oldRender,
       ipull($this->intra, 0),
@@ -545,6 +546,7 @@ class DifferentialChangesetParser {
     $event = new PhabricatorEvent(
       PhabricatorEventType::TYPE_DIFFERENTIAL_WILLMARKGENERATED,
       array(
+        'filename' => $changeset->getFilename(),
         'corpus' => $new_corpus_block,
         'is_generated' => $generated_guess
       )
