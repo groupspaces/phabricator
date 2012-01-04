@@ -40,9 +40,9 @@ final class DifferentialUnitFieldSpecification
     $postponed_count = 0;
     $udata = $this->getDiffProperty('arc:unit');
     $utail = null;
+    $unit_messages = array();
 
     if ($udata) {
-      $unit_messages = array();
       foreach ($udata as $test) {
         $name = idx($test, 'name');
         $result = idx($test, 'result');
