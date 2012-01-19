@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,9 @@
  * limitations under the License.
  */
 
-final class PhabricatorFileURI {
+final class DifferentialActionHasNoEffectException
+  extends DifferentialException {
 
-  public static function getViewURIForPHID($phid) {
 
-    // TODO: Get rid of this class, the advent of the applet attack makes the
-    // tiny optimization it represented effectively obsolete.
-
-    $file = id(new PhabricatorFile())->loadOneWhere(
-      'phid = %s',
-      $phid);
-    if ($file) {
-      return $file->getViewURI();
-    }
-
-    return null;
-  }
 
 }

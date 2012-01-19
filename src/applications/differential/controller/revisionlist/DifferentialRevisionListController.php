@@ -316,6 +316,7 @@ class DifferentialRevisionListController extends DifferentialController {
           array(
             'all'  => 'All',
             'open' => 'Open',
+            'committed' => 'Committed',
           ),
           $params['status'],
           $uri,
@@ -348,6 +349,8 @@ class DifferentialRevisionListController extends DifferentialController {
       case 'status':
         if ($params['status'] == 'open') {
           $query->withStatus(DifferentialRevisionQuery::STATUS_OPEN);
+        } elseif ($params['status'] == 'committed') {
+          $query->withStatus(DifferentialRevisionQuery::STATUS_COMMITTED);
         }
         break;
       case 'order':
@@ -373,7 +376,7 @@ class DifferentialRevisionListController extends DifferentialController {
         // about) and $waiting (revisions you're waiting on someone else to do
         // something about).
         foreach ($revisions as $revision) {
-          $status_review = DifferentialRevisionStatus::NEEDS_REVIEW;
+          $status_review = ArcanistDifferentialRevisionStatus::NEEDS_REVIEW;
           $needs_review = ($revision->getStatus() == $status_review);
           $filter_is_author = ($revision->getAuthorPHID() == $user_phid);
 

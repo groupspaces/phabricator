@@ -294,6 +294,11 @@ return array(
   // of any affected mail.
   'metamta.precedence-bulk' => false,
 
+  // Mail.app on OS X Lion won't respect threading headers unless the subject
+  // is prefixed with "Re:". If you enable this option, Phabricator will add
+  // "Re:" to the subject line of all mail which is expected to thread.
+  'metamta.re-prefix' => false,
+
 
 // -- Auth ------------------------------------------------------------------ //
 
@@ -309,7 +314,7 @@ return array(
 
   // Maximum number of simultaneous Conduit sessions each user is permitted
   // to have.
-  'auth.sessions.conduit'       => 3,
+  'auth.sessions.conduit'       => 5,
 
   // Set this true to enable the Settings -> SSH Public Keys panel, which will
   // allow users to associated SSH public keys with their accounts. This is only
@@ -326,6 +331,10 @@ return array(
   // from some other authoritative system, you can disable this to ensure
   // information remains consistent across both systems.
   'account.editable'            => true,
+
+  // When users set or reset a password, it must have at least this many
+  // characters.
+  'account.minimum-password-length'  => 8,
 
 
 // --  Facebook  ------------------------------------------------------------ //
@@ -386,7 +395,9 @@ return array(
 
 // -- Recaptcha ------------------------------------------------------------- //
 
-  // Is Recaptcha enabled? If disabled, captchas will not appear.
+  // Is Recaptcha enabled? If disabled, captchas will not appear. You should
+  // enable Recaptcha if your install is public-facing, as it hinders
+  // brute-force attacks.
   'recaptcha.enabled'           => false,
 
   // Your Recaptcha public key, obtained from Recaptcha.

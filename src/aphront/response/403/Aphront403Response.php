@@ -16,20 +16,27 @@
  * limitations under the License.
  */
 
-final class DifferentialRevisionHash {
+/**
+ * @group aphront
+ */
+class Aphront403Response extends AphrontWebpageResponse {
 
-  const TABLE_NAME = 'differential_revisionhash';
+  public function getHTTPResponseCode() {
+    return 403;
+  }
 
-  const HASH_GIT_COMMIT         = 'gtcm';
-  const HASH_GIT_TREE           = 'gttr';
-  const HASH_MERCURIAL_COMMIT   = 'hgcm';
+  public function buildResponseString() {
+    $failure = new AphrontRequestFailureView();
+    $failure->setHeader('403 Forbidden');
+    $failure->appendChild(
+      '<p>You do not have privileges to access the requested page.</p>');
 
-  public static function getTypes() {
-    return array(
-      DifferentialRevisionHash::HASH_GIT_COMMIT,
-      DifferentialRevisionHash::HASH_GIT_TREE,
-      DifferentialRevisionHash::HASH_MERCURIAL_COMMIT,
-    );
+    $view = new PhabricatorStandardPageView();
+    $view->setTitle('403 Forbidden');
+    $view->setRequest($this->getRequest());
+    $view->appendChild($failure);
+
+    return $view->render();
   }
 
 }

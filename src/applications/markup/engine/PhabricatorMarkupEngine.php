@@ -45,6 +45,7 @@ class PhabricatorMarkupEngine {
       // cache documents, and the module is prohibitively expensive for large
       // documents.
       'macros' => false,
+      'header.generate-toc' => true,
     ));
   }
 
@@ -77,6 +78,7 @@ class PhabricatorMarkupEngine {
       'custom-inline' => array(),
       'custom-block'  => array(),
       'differential.diff' => null,
+      'header.generate-toc' => false,
       'macros'        => true,
       'uri.allowed-protocols' => PhabricatorEnv::getEnvConfig(
         'uri.allowed-protocols'),
@@ -95,6 +97,7 @@ class PhabricatorMarkupEngine {
       'uri.allowed-protocols',
       $options['uri.allowed-protocols']);
     $engine->setConfig('differential.diff', $options['differential.diff']);
+    $engine->setConfig('header.generate-toc', $options['header.generate-toc']);
 
     $rules = array();
     $rules[] = new PhutilRemarkupRuleEscapeRemarkup();

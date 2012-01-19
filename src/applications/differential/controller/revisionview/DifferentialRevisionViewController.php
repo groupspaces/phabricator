@@ -134,6 +134,28 @@ class DifferentialRevisionViewController extends DifferentialController {
       $aux_field->setHandles(array_select_keys($handles, $aux_phids[$key]));
     }
 
+    $reviewer_warning = null;
+    $has_live_reviewer = false;
+    foreach ($revision->getReviewers() as $reviewer) {
+      if (!$handles[$reviewer]->isDisabled()) {
+        $has_live_reviewer = true;
+      }
+    }
+    if (!$has_live_reviewer) {
+      $reviewer_warning = new AphrontErrorView();
+      $reviewer_warning->setSeverity(AphrontErrorView::SEVERITY_WARNING);
+      $reviewer_warning->setTitle('No Active Reviewers');
+      if ($revision->getReviewers()) {
+        $reviewer_warning->appendChild(
+          '<p>All specified reviewers are disabled. You may want to add '.
+          'some new reviewers.</p>');
+      } else {
+        $reviewer_warning->appendChild(
+          '<p>This revision has no specified reviewers. You may want to '.
+          'add some.</p>');
+      }
+    }
+
     $request_uri = $request->getRequestURI();
 
     $limit = 100;
@@ -210,6 +232,7 @@ class DifferentialRevisionViewController extends DifferentialController {
     $comment_view->setChangesets($all_changesets);
     $comment_view->setUser($user);
     $comment_view->setTargetDiff($target);
+    $comment_view->setVersusDiffID($diff_vs);
 
     $changeset_view = new DifferentialChangesetListView();
     $changeset_view->setChangesets($visible_changesets);
@@ -271,6 +294,7 @@ class DifferentialRevisionViewController extends DifferentialController {
     $page_pane = id(new DifferentialPrimaryPaneView())
       ->setLineWidthFromChangesets($changesets)
       ->setID($pane_id)
+      ->appendChild($reviewer_warning)
       ->appendChild(
         $revision_detail->render().
         $comment_view->render().
@@ -402,46 +426,46 @@ class DifferentialRevisionViewController extends DifferentialController {
 
     if ($viewer_is_owner) {
       switch ($revision->getStatus()) {
-        case DifferentialRevisionStatus::NEEDS_REVIEW:
+        case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
           $actions[DifferentialAction::ACTION_ABANDON] = true;
           $actions[DifferentialAction::ACTION_RETHINK] = true;
           break;
-        case DifferentialRevisionStatus::NEEDS_REVISION:
+        case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
           $actions[DifferentialAction::ACTION_ABANDON] = true;
           $actions[DifferentialAction::ACTION_REQUEST] = true;
           break;
-        case DifferentialRevisionStatus::ACCEPTED:
+        case ArcanistDifferentialRevisionStatus::ACCEPTED:
           $actions[DifferentialAction::ACTION_ABANDON] = true;
           $actions[DifferentialAction::ACTION_REQUEST] = true;
           $actions[DifferentialAction::ACTION_RETHINK] = true;
           break;
-        case DifferentialRevisionStatus::COMMITTED:
+        case ArcanistDifferentialRevisionStatus::COMMITTED:
           break;
-        case DifferentialRevisionStatus::ABANDONED:
+        case ArcanistDifferentialRevisionStatus::ABANDONED:
           $actions[DifferentialAction::ACTION_RECLAIM] = true;
           break;
       }
     } else {
       switch ($revision->getStatus()) {
-        case DifferentialRevisionStatus::NEEDS_REVIEW:
+        case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
           $admin_actions[DifferentialAction::ACTION_ABANDON] = $viewer_is_admin;
           $actions[DifferentialAction::ACTION_ACCEPT] = true;
           $actions[DifferentialAction::ACTION_REJECT] = true;
           $actions[DifferentialAction::ACTION_RESIGN] = $viewer_is_reviewer;
           break;
-        case DifferentialRevisionStatus::NEEDS_REVISION:
+        case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
           $admin_actions[DifferentialAction::ACTION_ABANDON] = $viewer_is_admin;
           $actions[DifferentialAction::ACTION_ACCEPT] = true;
           $actions[DifferentialAction::ACTION_RESIGN] = $viewer_is_reviewer;
           break;
-        case DifferentialRevisionStatus::ACCEPTED:
+        case ArcanistDifferentialRevisionStatus::ACCEPTED:
           $admin_actions[DifferentialAction::ACTION_ABANDON] = $viewer_is_admin;
           $actions[DifferentialAction::ACTION_REJECT] = true;
           $actions[DifferentialAction::ACTION_RESIGN] =
             $viewer_is_reviewer && !$viewer_did_accept;
           break;
-        case DifferentialRevisionStatus::COMMITTED:
-        case DifferentialRevisionStatus::ABANDONED:
+        case ArcanistDifferentialRevisionStatus::COMMITTED:
+        case ArcanistDifferentialRevisionStatus::ABANDONED:
           break;
       }
     }
@@ -630,7 +654,7 @@ class DifferentialRevisionViewController extends DifferentialController {
 
     $indexed_langs = array_fill_keys($langs, true);
     foreach ($visible_changesets as $key => $changeset) {
-      $lang = $engine->getLanguageFromFilename($changeset->getFileName());
+      $lang = $engine->getLanguageFromFilename($changeset->getFilename());
       if (isset($indexed_langs[$lang])) {
         $symbol_indexes[$key] = array(
           'lang'      => $lang,

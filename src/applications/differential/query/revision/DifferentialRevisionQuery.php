@@ -37,6 +37,7 @@ final class DifferentialRevisionQuery {
   private $status       = 'status-any';
   const STATUS_ANY      = 'status-any';
   const STATUS_OPEN     = 'status-open';
+  const STATUS_COMMITTED = 'status-committed';
 
   private $authors = array();
   private $ccs = array();
@@ -135,8 +136,9 @@ final class DifferentialRevisionQuery {
    * Calling this function will clear anything set by previous calls to
    * @{method:withCommitHashes}.
    *
-   * @param array List of pairs <Class DifferentialRevisionHash::HASH_$type
-   *              constant, hash>
+   * @param array List of pairs <Class
+   *              ArcanistDifferentialRevisionHash::HASH_$type constant,
+   *              hash>
    * @return this
    * @task config
    */
@@ -381,9 +383,9 @@ final class DifferentialRevisionQuery {
 
     $responsible_phid = reset($this->responsibles);
     $open_statuses = array(
-      DifferentialRevisionStatus::NEEDS_REVIEW,
-      DifferentialRevisionStatus::NEEDS_REVISION,
-      DifferentialRevisionStatus::ACCEPTED,
+      ArcanistDifferentialRevisionStatus::NEEDS_REVIEW,
+      ArcanistDifferentialRevisionStatus::NEEDS_REVISION,
+      ArcanistDifferentialRevisionStatus::ACCEPTED,
     );
 
     return queryfx_all(
@@ -461,7 +463,7 @@ final class DifferentialRevisionQuery {
       $joins[] = qsprintf(
         $conn_r,
         'JOIN %T hash_rel ON hash_rel.revisionID = r.id',
-        DifferentialRevisionHash::TABLE_NAME);
+        ArcanistDifferentialRevisionHash::TABLE_NAME);
     }
 
     if ($this->ccs) {
@@ -587,9 +589,17 @@ final class DifferentialRevisionQuery {
           $conn_r,
           'status IN (%Ld)',
           array(
-            DifferentialRevisionStatus::NEEDS_REVIEW,
-            DifferentialRevisionStatus::NEEDS_REVISION,
-            DifferentialRevisionStatus::ACCEPTED,
+            ArcanistDifferentialRevisionStatus::NEEDS_REVIEW,
+            ArcanistDifferentialRevisionStatus::NEEDS_REVISION,
+            ArcanistDifferentialRevisionStatus::ACCEPTED,
+          ));
+        break;
+      case self::STATUS_COMMITTED:
+        $where[] = qsprintf(
+          $conn_r,
+          'status IN (%Ld)',
+          array(
+            ArcanistDifferentialRevisionStatus::COMMITTED,
           ));
         break;
       default:

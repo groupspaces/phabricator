@@ -19,6 +19,7 @@
 class DifferentialChangesetListView extends AphrontView {
 
   private $changesets = array();
+  private $references = array();
   private $editable;
   private $revision;
   private $renderURI = '/differential/changeset/';
@@ -101,6 +102,8 @@ class DifferentialChangesetListView extends AphrontView {
 
       $ref = $this->references[$key];
 
+      $detail = new DifferentialChangesetDetailView();
+
       $detail_button = null;
       if ($this->standaloneViews) {
         $detail_uri = new PhutilURI($this->renderURI);
@@ -116,16 +119,25 @@ class DifferentialChangesetListView extends AphrontView {
             $changeset->getAbsoluteRepositoryPath($this->diff, $repository));
         }
 
+        $meta = array(
+          'detailURI'     => (string)$detail_uri,
+          'diffusionURI'  => $diffusion_uri,
+          'containerID'   => $detail->getID(),
+        );
+        $change = $changeset->getChangeType();
+        if ($change != DifferentialChangeType::TYPE_ADD) {
+          $meta['leftURI'] = (string)$detail_uri->alter('view', 'old');
+        }
+        if ($change != DifferentialChangeType::TYPE_DELETE &&
+            $change != DifferentialChangeType::TYPE_MULTICOPY) {
+          $meta['rightURI'] = (string)$detail_uri->alter('view', 'new');
+        }
+
         $detail_button = javelin_render_tag(
           'a',
           array(
             'class'   => 'button small grey',
-            'meta'    => array(
-              'detailURI'     => (string)$detail_uri,
-              'leftURI'       => (string)$detail_uri->alter('view', 'old'),
-              'rightURI'      => (string)$detail_uri->alter('view', 'new'),
-              'diffusionURI'  => $diffusion_uri,
-            ),
+            'meta'    => $meta,
             'href'    => $detail_uri,
             'target'  => '_blank',
             'sigil'   => 'differential-view-options',
@@ -133,12 +145,12 @@ class DifferentialChangesetListView extends AphrontView {
           "View Options \xE2\x96\xBC");
       }
 
-      $uniq_id = celerity_generate_unique_node_id();
 
-      $detail = new DifferentialChangesetDetailView();
       $detail->setChangeset($changeset);
       $detail->addButton($detail_button);
       $detail->setSymbolIndex(idx($this->symbolIndexes, $key));
+
+      $uniq_id = celerity_generate_unique_node_id();
       $detail->appendChild(
         phutil_render_tag(
           'div',

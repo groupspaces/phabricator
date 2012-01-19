@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,6 +54,7 @@ class AphrontDefaultApplicationConfiguration
         'filter/(?P<filter>\w+)/$' => 'PhabricatorFileListController',
         'upload/$' => 'PhabricatorFileUploadController',
         'dropupload/$' => 'PhabricatorFileDropUploadController',
+        'delete/(?P<id>\d+)/$' => 'PhabricatorFileDeleteController',
         '(?P<view>info)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
         '(?P<view>view)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
         '(?P<view>download)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
@@ -134,6 +135,7 @@ class AphrontDefaultApplicationConfiguration
         'email/$' => 'PhabricatorEmailLoginController',
         'etoken/(?P<token>\w+)/$' => 'PhabricatorEmailTokenController',
         'refresh/$' => 'PhabricatorRefreshCSRFController',
+        'validate/$' => 'PhabricatorLoginValidateController',
       ),
 
       '/logout/$' => 'PhabricatorLogoutController',
@@ -465,22 +467,6 @@ class AphrontDefaultApplicationConfiguration
               'redirect' => $response->getURI(),
             ));
       }
-    } else if ($response instanceof Aphront404Response) {
-
-      $failure = new AphrontRequestFailureView();
-      $failure->setHeader('404 Not Found');
-      $failure->appendChild(
-        '<p>The page you requested was not found.</p>');
-
-      $view = new PhabricatorStandardPageView();
-      $view->setTitle('404 Not Found');
-      $view->setRequest($this->getRequest());
-      $view->appendChild($failure);
-
-      $response = new AphrontWebpageResponse();
-      $response->setContent($view->render());
-      $response->setHTTPResponseCode(404);
-      return $response;
     }
 
     return $response;

@@ -6,7 +6,5 @@
 
 
 
-phutil_require_module('phutil', 'utils');
 
-
-phutil_require_source('DifferentialRevisionStatus.php');
+phutil_require_source('ConduitAPIResponse.php');

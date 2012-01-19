@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -115,7 +115,12 @@ class PhabricatorPeopleProfileController extends PhabricatorPeopleController {
     }
 
     $src_phid = $user->getProfileImagePHID();
-    $picture = PhabricatorFileURI::getViewURIForPHID($src_phid);
+    $file = id(new PhabricatorFile())->loadOneWhere('phid = %s', $src_phid);
+    if ($file) {
+      $picture = $file->getBestURI();
+    } else {
+      $picture = null;
+    }
 
     $header = new PhabricatorProfileHeaderView();
     $header
@@ -130,6 +135,14 @@ class PhabricatorPeopleProfileController extends PhabricatorPeopleController {
     if ($user->getPHID() == $viewer->getPHID()) {
       $nav->addSpacer();
       $nav->addFilter(null, 'Edit Profile...', '/settings/page/profile/');
+    }
+
+    if ($viewer->getIsAdmin()) {
+      $nav->addSpacer();
+      $nav->addFilter(
+        null,
+        'Administrate User...',
+        '/people/edit/'.$user->getID().'/');
     }
 
     return $this->buildStandardPageResponse(
