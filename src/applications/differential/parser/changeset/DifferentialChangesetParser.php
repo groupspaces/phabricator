@@ -53,6 +53,7 @@ class DifferentialChangesetParser {
 
   private $lineWidth = 80;
   private $isTopLevel;
+  private $coverage;
 
   const CACHE_VERSION = 4;
 
@@ -174,6 +175,11 @@ class DifferentialChangesetParser {
 
   public function setUser(PhabricatorUser $user) {
     $this->user = $user;
+    return $this;
+  }
+
+  public function setCoverage($coverage) {
+    $this->coverage = $coverage;
     return $this;
   }
 
@@ -510,9 +516,10 @@ class DifferentialChangesetParser {
     $generated_guess = (strpos($new_corpus_block, '@'.'generated') !== false);
 
     if (!$generated_guess) {
-      $generated_path_regexps = PhabricatorEnv::getEnvConfig('differential.generated-paths');
+      $config_key = 'differential.generated-paths';
+      $generated_path_regexps = PhabricatorEnv::getEnvConfig($config_key);
       foreach ($generated_path_regexps as $regexp) {
-        if (preg_match($regexp, $changeset->getFilename())) {
+        if (preg_match($regexp, $this->changeset->getFilename())) {
           $generated_guess = true;
           break;
         }
@@ -1121,7 +1128,7 @@ class DifferentialChangesetParser {
       array(
         'sigil' => 'context-target',
       ),
-      '<td class="differential-shield" colspan="4">'.
+      '<td class="differential-shield" colspan="5">'.
         phutil_escape_html($message).
         $more.
       '</td>');
@@ -1142,7 +1149,7 @@ class DifferentialChangesetParser {
         array(
           'sigil' => 'context-target',
         ),
-        '<td colspan="4" class="show-more">'.
+        '<td colspan="5" class="show-more">'.
             'Context not available.'.
         '</td>');
     }
@@ -1294,7 +1301,7 @@ class DifferentialChangesetParser {
           array(
             'sigil' => 'context-target',
           ),
-          '<td colspan="4" class="show-more">'.
+          '<td colspan="5" class="show-more">'.
             implode(' &bull; ', $contents).
           '</td>');
 
@@ -1321,10 +1328,24 @@ class DifferentialChangesetParser {
         $o_attr = null;
       }
 
+
       if (isset($this->new[$ii])) {
         $n_num  = $this->new[$ii]['line'];
         $n_text = isset($this->newRender[$ii]) ? $this->newRender[$ii] : null;
         $n_attr = null;
+
+        $cov_class = null;
+        if ($this->coverage !== null) {
+          if (empty($this->coverage[$n_num - 1])) {
+            $cov_class = 'N';
+          } else {
+            $cov_class = $this->coverage[$n_num - 1];
+          }
+          $cov_class = 'cov-'.$cov_class;
+        }
+
+        $n_cov = '<td class="cov '.$cov_class.'"></td>';
+
         if ($this->new[$ii]['type']) {
           if (empty($this->old[$ii])) {
             $n_attr = ' class="new new-full"';
@@ -1336,6 +1357,7 @@ class DifferentialChangesetParser {
         $n_num   = null;
         $n_text  = null;
         $n_attr  = null;
+        $n_cov = null;
       }
 
 
@@ -1364,6 +1386,7 @@ class DifferentialChangesetParser {
           '<td'.$o_attr.'>'.$o_text.'</td>'.
           '<th'.$n_id.'>'.$n_num.'</th>'.
           '<td'.$n_attr.'>'.$n_text.'</td>'.
+          $n_cov.
         '</tr>';
 
       if ($context_not_available && ($ii == $rows - 1)) {
@@ -1376,7 +1399,7 @@ class DifferentialChangesetParser {
           $html[] =
             '<tr class="inline"><th /><td>'.
               $xhp.
-            '</td><th /><td /></tr>';
+            '</td><th /><td /><td class="cov" /></tr>';
         }
       }
       if ($n_num && isset($new_comments[$n_num])) {
@@ -1385,7 +1408,7 @@ class DifferentialChangesetParser {
           $html[] =
             '<tr class="inline"><th /><td /><th /><td>'.
               $xhp.
-            '</td></tr>';
+            '</td><td class="cov" /></tr>';
         }
       }
     }

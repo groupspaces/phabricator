@@ -87,7 +87,7 @@ return array(
   // exposes sensitive information to users, so make sure untrusted users can
   // not access an install running in this mode. You should definitely leave
   // this off in production. It is only really useful for using DarkConsole
-  // utilties to debug or profile logged-out pages. You must set
+  // utilities to debug or profile logged-out pages. You must set
   // 'darkconsole.enabled' to use this option.
   'darkconsole.always-on'       => false,
 
@@ -116,6 +116,9 @@ return array(
   // port than the default (which is 3306), specify it in the hostname
   // (e.g., db.example.com:1234).
   'mysql.host' => 'localhost',
+
+  // The number of times to try reconnecting to the MySQL database
+  'mysql.connection-retries' => 3,
 
 
 // -- Email ----------------------------------------------------------------- //
@@ -356,22 +359,22 @@ return array(
   'facebook.application-secret' => null,
 
 
-// -- Github ---------------------------------------------------------------- //
+// -- GitHub ---------------------------------------------------------------- //
 
-  // Can users use Github credentials to login to Phabricator?
+  // Can users use GitHub credentials to login to Phabricator?
   'github.auth-enabled'         => false,
 
-  // Can users use Github credentials to create new Phabricator accounts?
+  // Can users use GitHub credentials to create new Phabricator accounts?
   'github.registration-enabled' => true,
 
-  // Are Github accounts permanently linked to Phabricator accounts, or can
+  // Are GitHub accounts permanently linked to Phabricator accounts, or can
   // the user unlink them?
   'github.auth-permanent'       => false,
 
-  // The Github "Client ID" to use for Github API access.
+  // The GitHub "Client ID" to use for GitHub API access.
   'github.application-id'       => null,
 
-  // The Github "Secret" to use for Github API access.
+  // The GitHub "Secret" to use for GitHub API access.
   'github.application-secret'   => null,
 
 
@@ -442,7 +445,7 @@ return array(
   // This makes it harder to miss problems while developing Phabricator.
   'phabricator.show-error-callout' => false,
 
-  // When users write comments which have URIs, they'll be automaticaly linked
+  // When users write comments which have URIs, they'll be automatically linked
   // if the protocol appears in this set. This whitelist is primarily to prevent
   // security issues like javascript:// URIs.
   'uri.allowed-protocols' => array(
@@ -589,6 +592,7 @@ return array(
   // use 'ignore-all' by default
   'differential.whitespace-matters' => array(
     '/\.py$/',
+    '/\.l?hs$/',
   ),
 
   'differential.field-selector' => 'DifferentialDefaultFieldSelector',
@@ -670,6 +674,14 @@ return array(
   // required to view them! This is intended for things like open source
   // projects that want to expose an activity feed on the project homepage.
   'feed.public' => false,
+
+
+// -- Drydock --------------------------------------------------------------- //
+
+  // If you want to use Drydock's builtin EC2 Blueprints, configure your AWS
+  // EC2 credentials here.
+  'amazon-ec2.access-key'   => null,
+  'amazon-ec2.secret-key'   => null,
 
 // -- Customization --------------------------------------------------------- //
 

@@ -57,7 +57,8 @@ class AphrontDefaultApplicationConfiguration
         'delete/(?P<id>\d+)/$' => 'PhabricatorFileDeleteController',
         '(?P<view>info)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
         '(?P<view>view)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
-        '(?P<view>download)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
+        '(?P<view>download)/(?P<phid>[^/]+)/'
+          => 'PhabricatorFileViewController',
         'alt/(?P<key>[^/]+)/(?P<phid>[^/]+)/'
           => 'PhabricatorFileAltViewController',
         'macro/' => array(
@@ -82,7 +83,7 @@ class AphrontDefaultApplicationConfiguration
         => 'PhabricatorPeopleProfileController',
       '/conduit/' => array(
         '$' => 'PhabricatorConduitConsoleController',
-        'method/(?P<method>[^/]+)$' => 'PhabricatorConduitConsoleController',
+        'method/(?P<method>[^/]+)/$' => 'PhabricatorConduitConsoleController',
         'log/$' => 'PhabricatorConduitLogController',
         'log/view/(?P<view>[^/]+)/$' => 'PhabricatorConduitLogController',
         'token/$' => 'PhabricatorConduitTokenController',
@@ -166,6 +167,8 @@ class AphrontDefaultApplicationConfiguration
           'edit/(?P<id>\d+)/$' => 'ManiphestTaskEditController',
           'descriptionchange/(?P<id>\d+)/$' =>
             'ManiphestTaskDescriptionChangeController',
+          'descriptionpreview/$' =>
+            'ManiphestTaskDescriptionPreviewController',
         ),
         'transaction/' => array(
           'save/' => 'ManiphestTransactionSaveController',
@@ -204,6 +207,8 @@ class AphrontDefaultApplicationConfiguration
         'affiliation/(?P<id>\d+)/$'
           => 'PhabricatorProjectAffiliationEditController',
         'create/$' => 'PhabricatorProjectCreateController',
+        'update/(?P<id>\d+)/(?P<action>[^/]+)/$'
+          => 'PhabricatorProjectUpdateController',
       ),
 
       '/r(?P<callsign>[A-Z]+)(?P<commit>[a-z0-9]+)$'
@@ -258,6 +263,8 @@ class AphrontDefaultApplicationConfiguration
 
       '/daemon/' => array(
         'task/(?P<id>\d+)/$' => 'PhabricatorWorkerTaskDetailController',
+        'task/(?P<id>\d+)/(?P<action>[^/]+)/$'
+          => 'PhabricatorWorkerTaskUpdateController',
         'log/' => array(
           '$' => 'PhabricatorDaemonLogListController',
           'combined/$' => 'PhabricatorDaemonCombinedLogController',
@@ -270,9 +277,13 @@ class AphrontDefaultApplicationConfiguration
 
       '/herald/' => array(
         '$' => 'HeraldHomeController',
-        'view/(?P<view>[^/]+)/$' => 'HeraldHomeController',
+        'view/(?P<view>[^/]+)/' => array(
+          '$' => 'HeraldHomeController',
+          '(?P<global>global)/$' => 'HeraldHomeController'
+        ),
         'new/(?:(?P<type>[^/]+)/)?$' => 'HeraldNewController',
         'rule/(?:(?P<id>\d+)/)?$' => 'HeraldRuleController',
+        'history/(?P<id>\d+)/$' => 'HeraldRuleEditHistoryController',
         'delete/(?P<id>\d+)/$' => 'HeraldDeleteController',
         'test/$' => 'HeraldTestConsoleController',
         'all/' => array(
@@ -376,6 +387,18 @@ class AphrontDefaultApplicationConfiguration
 
       '/calendar/' => array(
         '$' => 'PhabricatorCalendarBrowseController',
+      ),
+
+      '/drydock/' => array(
+        '$' => 'DrydockResourceListController',
+        'resource/$' => 'DrydockResourceListController',
+        'resource/allocate/$' => 'DrydockResourceAllocateController',
+        'host/' => array(
+          '$' => 'DrydockHostListController',
+          'edit/$' => 'DrydockHostEditController',
+          'edit/(?P<id>\d+)/$' => 'DrydockhostEditController',
+        ),
+        'lease/$' => 'DrydockLeaseListController',
       ),
     );
   }

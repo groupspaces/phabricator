@@ -48,13 +48,20 @@ class DifferentialChangesetViewController extends DifferentialController {
     $view = $request->getStr('view');
     if ($view) {
       $changeset->attachHunks($changeset->loadHunks());
-      switch ($view) {
-        case 'new':
-          return $this->buildRawFileResponse($changeset->makeNewFile());
-        case 'old':
-          return $this->buildRawFileResponse($changeset->makeOldFile());
-        default:
-          return new Aphront400Response();
+      $type = $changeset->getFileType();
+      if ($type === DifferentialChangeType::FILE_TEXT) {
+        switch ($view) {
+          case 'new':
+            return $this->buildRawFileResponse($changeset->makeNewFile());
+          case 'old':
+            return $this->buildRawFileResponse($changeset->makeOldFile());
+          default:
+            return new Aphront400Response();
+        }
+      } else if ($type === DifferentialChangeType::FILE_IMAGE ||
+                 $type === DifferentialChangeType::FILE_BINARY) {
+          $phid = idx($changeset->getMetadata(), "$view:binary-phid");
+          return id(new AphrontRedirectResponse())->setURI("/file/info/$phid/");
       }
     }
 
@@ -125,11 +132,37 @@ class DifferentialChangesetViewController extends DifferentialController {
       $changeset = $choice;
     }
 
+    $coverage = null;
+    if ($right->getDiffID()) {
+      $unit = id(new DifferentialDiffProperty())->loadOneWhere(
+        'diffID = %d AND name = %s',
+        $right->getDiffID(),
+        'arc:unit');
+
+      if ($unit) {
+        $coverage = array();
+        foreach ($unit->getData() as $result) {
+          $result_coverage = idx($result, 'coverage');
+          if (!$result_coverage) {
+            continue;
+          }
+          $file_coverage = idx($result_coverage, $right->getFileName());
+          if (!$file_coverage) {
+            continue;
+          }
+          $coverage[] = $file_coverage;
+        }
+
+        $coverage = ArcanistUnitTestResult::mergeCoverage($coverage);
+      }
+    }
+
     $spec = $request->getStr('range');
     list($range_s, $range_e, $mask) =
       DifferentialChangesetParser::parseRangeSpecification($spec);
 
     $parser = new DifferentialChangesetParser();
+    $parser->setCoverage($coverage);
     $parser->setChangeset($changeset);
     $parser->setRenderingReference($rendering_reference);
     $parser->setRenderCacheKey($render_cache_key);
