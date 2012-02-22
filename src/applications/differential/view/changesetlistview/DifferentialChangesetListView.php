@@ -29,6 +29,7 @@ class DifferentialChangesetListView extends AphrontView {
   private $symbolIndexes = array();
   private $repository;
   private $diff;
+  private $vsMap;
 
   public function setChangesets($changesets) {
     $this->changesets = $changesets;
@@ -85,6 +86,15 @@ class DifferentialChangesetListView extends AphrontView {
     return $this;
   }
 
+  public function setVsMap(array $vs_map) {
+    $this->vsMap = $vs_map;
+    return $this;
+  }
+
+  public function getVsMap() {
+    return $this->vsMap;
+  }
+
   public function render() {
     require_celerity_resource('differential-changeset-view-css');
 
@@ -113,11 +123,7 @@ class DifferentialChangesetListView extends AphrontView {
       $detail_button = null;
       if ($this->standaloneViews) {
         $detail_uri = new PhutilURI($this->renderURI);
-        $detail_uri->setQueryParams(
-          array(
-            'ref'         => $ref,
-            'whitespace'  => $this->whitespace,
-          ));
+        $detail_uri->setQueryParams(array('ref' => $ref));
 
         $diffusion_uri = null;
         if ($repository) {
@@ -126,7 +132,8 @@ class DifferentialChangesetListView extends AphrontView {
         }
 
         $meta = array(
-          'detailURI'     => (string)$detail_uri,
+          'detailURI'     =>
+            (string)$detail_uri->alter('whitespace', $this->whitespace),
           'diffusionURI'  => $diffusion_uri,
           'containerID'   => $detail->getID(),
         );
@@ -157,7 +164,7 @@ class DifferentialChangesetListView extends AphrontView {
           array(
             'class'   => 'button small grey',
             'meta'    => $meta,
-            'href'    => $detail_uri,
+            'href'    => $meta['detailURI'],
             'target'  => '_blank',
             'sigil'   => 'differential-view-options',
           ),
@@ -167,6 +174,7 @@ class DifferentialChangesetListView extends AphrontView {
       $detail->setChangeset($changeset);
       $detail->addButton($detail_button);
       $detail->setSymbolIndex(idx($this->symbolIndexes, $key));
+      $detail->setVsChangesetID(idx($this->vsMap, $changeset->getID()));
 
       $uniq_id = celerity_generate_unique_node_id();
       $detail->appendChild(

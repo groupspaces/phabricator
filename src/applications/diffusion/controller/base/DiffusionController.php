@@ -51,6 +51,7 @@ abstract class DiffusionController extends PhabricatorController {
         ),
       ),
       null);
+    $page->setSearchDefaultScope(PhabricatorSearchScope::SCOPE_COMMITS);
 
     $page->appendChild($view);
 
@@ -97,6 +98,15 @@ abstract class DiffusionController extends PhabricatorController {
           ),
           $name));
     }
+    $nav->addNavItem(
+      phutil_render_tag(
+        'a',
+        array(
+          'href'  => '/owners/view/search/'.
+            '?repository='.phutil_escape_uri($callsign).
+            '&path='.phutil_escape_uri('/'.$drequest->getPath()),
+        ),
+        'Search Owners'));
 
     return $nav;
   }
@@ -133,6 +143,7 @@ abstract class DiffusionController extends PhabricatorController {
 
     $view = id(new DifferentialRevisionListView())
       ->setRevisions($revisions)
+      ->setFields(DifferentialRevisionListView::getDefaultFields())
       ->setUser($this->getRequest()->getUser());
 
     $phids = $view->getRequiredHandlePHIDs();

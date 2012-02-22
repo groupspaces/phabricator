@@ -39,6 +39,16 @@ abstract class PhabricatorOwnersController extends PhabricatorController {
     $nav->appendChild($view);
     $page->appendChild($nav);
 
+    $doclink =
+      PhabricatorEnv::getDoclink('article/Owners_Tool_User_Guide.html');
+    $tabs = array(
+      'help' => array(
+        'href' => $doclink,
+        'name' => 'Help',
+      ),
+    );
+    $page->setTabs($tabs, null);
+
     $response = new AphrontWebpageResponse();
     return $response->setContent($page->render());
   }
@@ -56,24 +66,21 @@ abstract class PhabricatorOwnersController extends PhabricatorController {
                   $package_views);
 
     $base_uri = new PhutilURI('/owners/');
-
     $nav = new AphrontSideNavFilterView();
     $nav->setBaseUri($base_uri);
+
     $nav->addLabel('Packages');
-    foreach ($package_views as $view) {
-      $nav->addFilter($view['key'], $view['name']);
-    }
+    $nav->addFilters($package_views);
+
     $nav->addSpacer();
     $nav->addLabel('Related Commits');
     $related_views = $this->getRelatedViews();
-    foreach ($related_views as $view) {
-      $href = clone $base_uri;
-      $href->setPath($href->getPath().$view['key']);
-      $href = (string)$href;
-      $nav->addFilter($view['key'],
-                      $view['name'],
-                      $href);
-    }
+    $nav->addFilters($related_views);
+
+    $nav->addSpacer();
+    $nav->addLabel('Commits Need Attention');
+    $attention_views = $this->getAttentionViews();
+    $nav->addFilters($attention_views);
 
     $filter = $this->getSideNavFilter();
     $nav->selectFilter($filter, 'view/owned');
@@ -87,12 +94,24 @@ abstract class PhabricatorOwnersController extends PhabricatorController {
 
   protected function getRelatedViews() {
     $related_views = array(
-      array('name' => 'Related to Package',
-            'key'  => 'related/view/all'),
-      array('name' => 'Needs Attention',
-            'key'  => 'related/view/audit')
+      array('name' => 'By Package',
+            'key'  => 'related/package'),
+      array('name' => 'By Package Owner',
+            'key'  => 'related/owner'),
           );
 
     return $related_views;
   }
+
+  protected function getAttentionViews() {
+    $attention_views = array(
+      array('name' => 'By Package',
+            'key'  => 'attention/package'),
+      array('name' => 'By Package Owner',
+            'key'  => 'attention/owner'),
+          );
+
+    return $attention_views;
+  }
+
 }

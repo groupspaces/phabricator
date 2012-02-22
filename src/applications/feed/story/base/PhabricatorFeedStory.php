@@ -83,6 +83,10 @@ abstract class PhabricatorFeedStory {
     return $this->getStoryData()->getEpoch();
   }
 
+  final public function getChronologicalKey() {
+    return $this->getStoryData()->getChronologicalKey();
+  }
+
   final protected function renderHandleList(array $phids) {
     $list = array();
     foreach ($phids as $phid) {
@@ -104,6 +108,10 @@ abstract class PhabricatorFeedStory {
         'target'  => $this->framed ? '_top' : null,
       ),
       phutil_escape_html($handle->getLinkName()));
+  }
+
+  final protected function renderString($str) {
+    return '<strong>'.phutil_escape_html($str).'</strong>';
   }
 
   final protected function renderSummary($text, $len = 128) {

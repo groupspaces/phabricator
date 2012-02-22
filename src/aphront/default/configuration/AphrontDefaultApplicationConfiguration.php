@@ -32,18 +32,19 @@ class AphrontDefaultApplicationConfiguration
 
   public function getURIMap() {
     return $this->getResourceURIMapRules() + array(
-      '/' => array(
-        '$'                     => 'PhabricatorDirectoryMainController',
-      ),
+      '/(?:(?P<filter>jump)/)?$' =>
+        'PhabricatorDirectoryMainController',
+      '/(?:(?P<filter>feed)/)(?:(?P<subfilter>[^/]+)/)?$' =>
+        'PhabricatorDirectoryMainController',
       '/directory/' => array(
-        'item/$'
-          => 'PhabricatorDirectoryItemListController',
+        '(?P<id>\d+)/$'
+          => 'PhabricatorDirectoryCategoryViewController',
+        'edit/$'
+          => 'PhabricatorDirectoryEditController',
         'item/edit/(?:(?P<id>\d+)/)?$'
           => 'PhabricatorDirectoryItemEditController',
         'item/delete/(?P<id>\d+)/'
           => 'PhabricatorDirectoryItemDeleteController',
-        'category/$'
-          => 'PhabricatorDirectoryCategoryListController',
         'category/edit/(?:(?P<id>\d+)/)?$'
           => 'PhabricatorDirectoryCategoryEditController',
         'category/delete/(?P<id>\d+)/'
@@ -55,12 +56,15 @@ class AphrontDefaultApplicationConfiguration
         'upload/$' => 'PhabricatorFileUploadController',
         'dropupload/$' => 'PhabricatorFileDropUploadController',
         'delete/(?P<id>\d+)/$' => 'PhabricatorFileDeleteController',
-        '(?P<view>info)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
-        '(?P<view>view)/(?P<phid>[^/]+)/' => 'PhabricatorFileViewController',
-        '(?P<view>download)/(?P<phid>[^/]+)/'
-          => 'PhabricatorFileViewController',
+        'info/(?P<phid>[^/]+)/' => 'PhabricatorFileInfoController',
+
+        'data/(?P<key>[^/]+)/(?P<phid>[^/]+)/'
+          => 'PhabricatorFileDataController',
+        // TODO: This is a deprecated version of /data/. Remove it after
+        // old links have had a chance to rot.
         'alt/(?P<key>[^/]+)/(?P<phid>[^/]+)/'
-          => 'PhabricatorFileAltViewController',
+          => 'PhabricatorFileDataController',
+
         'macro/' => array(
           '$' => 'PhabricatorFileMacroListController',
           'edit/(?:(?P<id>\d+)/)?$' => 'PhabricatorFileMacroEditController',
@@ -94,6 +98,7 @@ class AphrontDefaultApplicationConfiguration
       '/differential/' => array(
         '$' => 'DifferentialRevisionListController',
         'filter/(?P<filter>\w+)/$' => 'DifferentialRevisionListController',
+        'stats/(?P<filter>\w+)/$' => 'DifferentialRevisionStatsController',
         'diff/' => array(
           '(?P<id>\d+)/$' => 'DifferentialDiffViewController',
           'create/$' => 'DifferentialDiffCreateController',
@@ -149,6 +154,12 @@ class AphrontDefaultApplicationConfiguration
         ),
       ),
 
+      '/oauthserver/' => array(
+        'auth/' => 'PhabricatorOAuthServerAuthController',
+        'token/' => 'PhabricatorOAuthServerTokenController',
+        'test/' => 'PhabricatorOAuthServerTestController',
+      ),
+
       '/xhprof/' => array(
         'profile/(?P<phid>[^/]+)/$' => 'PhabricatorXHProfProfileController',
       ),
@@ -162,11 +173,14 @@ class AphrontDefaultApplicationConfiguration
       '/maniphest/' => array(
         '$' => 'ManiphestTaskListController',
         'view/(?P<view>\w+)/$' => 'ManiphestTaskListController',
+        'report/(?:(?P<view>\w+)/)?$' => 'ManiphestReportController',
         'task/' => array(
           'create/$' => 'ManiphestTaskEditController',
           'edit/(?P<id>\d+)/$' => 'ManiphestTaskEditController',
           'descriptionchange/(?P<id>\d+)/$' =>
             'ManiphestTaskDescriptionChangeController',
+          'descriptiondiff/$' =>
+            'ManiphestTaskDescriptionDiffController',
           'descriptionpreview/$' =>
             'ManiphestTaskDescriptionPreviewController',
         ),
@@ -190,7 +204,7 @@ class AphrontDefaultApplicationConfiguration
 
       '/search/' => array(
         '$' => 'PhabricatorSearchController',
-        '(?P<id>\d+)/$' => 'PhabricatorSearchController',
+        '(?P<key>[^/]+)/$' => 'PhabricatorSearchController',
         'attach/(?P<phid>[^/]+)/(?P<type>\w+)/(?:(?P<action>\w+)/)?$'
           => 'PhabricatorSearchAttachController',
         'select/(?P<type>\w+)/$'
@@ -204,8 +218,6 @@ class AphrontDefaultApplicationConfiguration
         'edit/(?P<id>\d+)/$' => 'PhabricatorProjectProfileEditController',
         'view/(?P<id>\d+)/(?:(?P<page>\w+)/)?$'
           => 'PhabricatorProjectProfileController',
-        'affiliation/(?P<id>\d+)/$'
-          => 'PhabricatorProjectAffiliationEditController',
         'create/$' => 'PhabricatorProjectCreateController',
         'update/(?P<id>\d+)/(?P<action>[^/]+)/$'
           => 'PhabricatorProjectUpdateController',
@@ -307,9 +319,10 @@ class AphrontDefaultApplicationConfiguration
         'new/$' => 'PhabricatorOwnersEditController',
         'package/(?P<id>\d+)/$' => 'PhabricatorOwnersDetailController',
         'delete/(?P<id>\d+)/$' => 'PhabricatorOwnersDeleteController',
-        'related/' => array(
+        '(?P<scope>related|attention)/' => array(
           '$' => 'PhabricatorOwnerRelatedListController',
-          'view/(?P<view>[^/]+)/$' => 'PhabricatorOwnerRelatedListController',
+          '(?P<view>package|owner)/$'
+            => 'PhabricatorOwnerRelatedListController',
         ),
       ),
 
@@ -355,10 +368,7 @@ class AphrontDefaultApplicationConfiguration
           => 'PhabricatorCountdownDeleteController'
       ),
 
-      '/feed/' => array(
-        '$' => 'PhabricatorFeedStreamController',
-        'public/$' => 'PhabricatorFeedPublicStreamController',
-      ),
+      '/feed/public/$' => 'PhabricatorFeedPublicStreamController',
 
       '/V(?P<id>\d+)$'  => 'PhabricatorSlowvotePollController',
       '/vote/' => array(
@@ -399,6 +409,13 @@ class AphrontDefaultApplicationConfiguration
           'edit/(?P<id>\d+)/$' => 'DrydockhostEditController',
         ),
         'lease/$' => 'DrydockLeaseListController',
+      ),
+
+      '/chatlog/' => array(
+        '$' =>
+          'PhabricatorChatLogChannelListController',
+        'channel/(?P<channel>[^/]+)/$' =>
+          'PhabricatorChatLogChannelLogController',
       ),
     );
   }
