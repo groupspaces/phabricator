@@ -34,8 +34,11 @@ class AphrontDefaultApplicationConfiguration
     return $this->getResourceURIMapRules() + array(
       '/(?:(?P<filter>jump)/)?$' =>
         'PhabricatorDirectoryMainController',
-      '/(?:(?P<filter>feed)/)(?:(?P<subfilter>[^/]+)/)?$' =>
-        'PhabricatorDirectoryMainController',
+      '/(?:(?P<filter>feed)/)' => array(
+        'public/$' => 'PhabricatorFeedPublicStreamController',
+        '(?:(?P<subfilter>[^/]+)/)?$' =>
+          'PhabricatorDirectoryMainController',
+      ),
       '/directory/' => array(
         '(?P<id>\d+)/$'
           => 'PhabricatorDirectoryCategoryViewController',
@@ -155,9 +158,24 @@ class AphrontDefaultApplicationConfiguration
       ),
 
       '/oauthserver/' => array(
-        'auth/' => 'PhabricatorOAuthServerAuthController',
-        'token/' => 'PhabricatorOAuthServerTokenController',
-        'test/' => 'PhabricatorOAuthServerTestController',
+        'auth/'          => 'PhabricatorOAuthServerAuthController',
+        'test/'          => 'PhabricatorOAuthServerTestController',
+        'token/'         => 'PhabricatorOAuthServerTokenController',
+        'clientauthorization/' => array(
+          '$' => 'PhabricatorOAuthClientAuthorizationListController',
+          'delete/(?P<phid>[^/]+)/' =>
+            'PhabricatorOAuthClientAuthorizationDeleteController',
+          'edit/(?P<phid>[^/]+)/' =>
+            'PhabricatorOAuthClientAuthorizationEditController',
+        ),
+        'client/' => array(
+          '$'                        => 'PhabricatorOAuthClientListController',
+          'create/$'                 => 'PhabricatorOAuthClientEditController',
+          'delete/(?P<phid>[^/]+)/$' =>
+            'PhabricatorOAuthClientDeleteController',
+          'edit/(?P<phid>[^/]+)/$'   => 'PhabricatorOAuthClientEditController',
+          'view/(?P<phid>[^/]+)/$'   => 'PhabricatorOAuthClientViewController',
+        ),
       ),
 
       '/xhprof/' => array(
@@ -174,6 +192,7 @@ class AphrontDefaultApplicationConfiguration
         '$' => 'ManiphestTaskListController',
         'view/(?P<view>\w+)/$' => 'ManiphestTaskListController',
         'report/(?:(?P<view>\w+)/)?$' => 'ManiphestReportController',
+        'batch/$' => 'ManiphestBatchEditController',
         'task/' => array(
           'create/$' => 'ManiphestTaskEditController',
           'edit/(?P<id>\d+)/$' => 'ManiphestTaskEditController',
@@ -246,7 +265,7 @@ class AphrontDefaultApplicationConfiguration
           'browse/'.
             '(?P<path>.*?)'.
             '(?:[;](?P<commit>[a-z0-9]+))?'.
-            '(?:[$](?P<line>\d+))?'.
+            '(?:[$](?P<line>\d+(?:-\d+)?))?'.
             '$'
               => 'DiffusionBrowseController',
           'diff/'.
@@ -327,8 +346,11 @@ class AphrontDefaultApplicationConfiguration
       ),
 
       '/audit/' => array(
-        '$' => 'PhabricatorAuditEditController',
+        '$' => 'PhabricatorAuditListController',
+        'view/(?P<filter>[^/]+)/$' => 'PhabricatorAuditListController',
+
         'edit/$' => 'PhabricatorAuditEditController',
+        'addcomment/$' => 'PhabricatorAuditAddCommentController',
       ),
 
       '/xhpast/' => array(
@@ -367,8 +389,6 @@ class AphrontDefaultApplicationConfiguration
         'delete/(?P<id>\d+)/$'
           => 'PhabricatorCountdownDeleteController'
       ),
-
-      '/feed/public/$' => 'PhabricatorFeedPublicStreamController',
 
       '/V(?P<id>\d+)$'  => 'PhabricatorSlowvotePollController',
       '/vote/' => array(
