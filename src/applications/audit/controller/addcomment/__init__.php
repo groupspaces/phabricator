@@ -12,6 +12,7 @@ phutil_require_module('phabricator', 'aphront/response/redirect');
 phutil_require_module('phabricator', 'applications/audit/controller/base');
 phutil_require_module('phabricator', 'applications/audit/editor/comment');
 phutil_require_module('phabricator', 'applications/audit/storage/auditcomment');
+phutil_require_module('phabricator', 'applications/draft/storage/draft');
 phutil_require_module('phabricator', 'applications/phid/handle/data');
 phutil_require_module('phabricator', 'applications/repository/storage/commit');
 

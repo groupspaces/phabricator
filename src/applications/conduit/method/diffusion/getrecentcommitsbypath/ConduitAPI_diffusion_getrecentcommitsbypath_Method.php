@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 /**
  * @group conduit
  */
-class ConduitAPI_diffusion_getrecentcommitsbypath_Method
+final class ConduitAPI_diffusion_getrecentcommitsbypath_Method
   extends ConduitAPIMethod {
 
   const RESULT_LIMIT = 10;
@@ -45,13 +45,13 @@ class ConduitAPI_diffusion_getrecentcommitsbypath_Method
   }
 
   protected function execute(ConduitAPIRequest $request) {
-    $results = array();
+    $drequest = DiffusionRequest::newFromDictionary(
+      array(
+        'callsign'  => $request->getValue('callsign'),
+        'path'      => $request->getValue('path'),
+      ));
 
-    $history = DiffusionHistoryQuery::newFromDiffusionRequest(
-      DiffusionRequest::newFromAphrontRequestDictionary(
-        $request->getAllParameters()
-      )
-    )
+    $history = DiffusionHistoryQuery::newFromDiffusionRequest($drequest)
     ->setLimit(self::RESULT_LIMIT)
     ->needDirectChanges(true)
     ->needChildChanges(true)

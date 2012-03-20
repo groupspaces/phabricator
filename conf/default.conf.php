@@ -90,6 +90,8 @@ return array(
     'phabricator.csrf-key',
     'facebook.application-secret',
     'github.application-secret',
+    'phabricator.mail-key',
+    'security.hmac-key',
   ),
 
 
@@ -231,9 +233,30 @@ return array(
   'metamta.differential.subject-prefix' => '[Differential]',
 
   // Set this to true if you want patches to be attached to mail from
-  // Differential.  This won't work if you are using SendGrid as your mail
+  // Differential. This won't work if you are using SendGrid as your mail
   // adapter.
   'metamta.differential.attach-patches' => false,
+
+  // To include patches in email bodies, set this to a positive integer. Patches
+  // will be inlined if they are at most that many lines. For instance, a value
+  // of 100 means "inline patches if they are no longer than 100 lines". By
+  // default, patches are not inlined.
+  'metamta.differential.inline-patches' => 0,
+
+  // If you enable either of the options above, you can choose what format
+  // patches are sent in. Valid options are 'unified' (like diff -u) or 'git'.
+  'metamta.differential.patch-format'   => 'unified',
+
+  // Prefix prepended to mail sent by Diffusion.
+  'metamta.diffusion.subject-prefix' => '[Diffusion]',
+
+  // See 'metamta.maniphest.reply-handler-domain'. This does the same thing,
+  // but allows email replies via Diffusion.
+  'metamta.diffusion.reply-handler-domain' => null,
+
+  // See 'metamta.maniphest.reply-handler'. This does the same thing, but
+  // affects Diffusion.
+  'metamta.diffusion.reply-handler' => 'PhabricatorAuditReplyHandler',
 
   // By default, Phabricator generates unique reply-to addresses and sends a
   // separate email to each recipient when you enable reply handling. This is
@@ -508,6 +531,25 @@ return array(
     'image/png'   => 'image/png',
     'image/gif'   => 'image/gif',
     'text/plain'  => 'text/plain; charset=utf-8',
+
+    // ".ico" favicon files, which have mime type diversity. See:
+    // http://en.wikipedia.org/wiki/ICO_(file_format)#MIME_type
+    'image/x-ico'               => 'image/x-icon',
+    'image/x-icon'              => 'image/x-icon',
+    'image/vnd.microsoft.icon'  => 'image/x-icon',
+  ),
+
+  // List of mime types which can be used as the source for an <img /> tag.
+  // This should be a subset of 'files.viewable-mime-types' and exclude files
+  // like text.
+  'files.image-mime-types' => array(
+    'image/jpeg'                => true,
+    'image/jpg'                 => true,
+    'image/png'                 => true,
+    'image/gif'                 => true,
+    'image/x-ico'               => true,
+    'image/x-icon'              => true,
+    'image/vnd.microsoft.icon'  => true,
   ),
 
   // Phabricator can proxy images from other servers so you can paste the URI

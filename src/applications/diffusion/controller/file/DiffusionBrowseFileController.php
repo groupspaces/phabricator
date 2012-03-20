@@ -16,33 +16,11 @@
  * limitations under the License.
  */
 
-class DiffusionBrowseFileController extends DiffusionController {
+final class DiffusionBrowseFileController extends DiffusionController {
 
-  // Image types we want to display inline using <img> tags
-  protected $imageTypes = array(
-    'png' => 'image/png',
-    'gif' => 'image/gif',
-    'ico' => 'image/png',
-    'jpg' => 'image/jpeg',
-    'jpeg'=> 'image/jpeg'
-  );
-
-  // Document types that should trigger link to ?view=raw
-  protected $documentTypes = array(
-    'pdf'=> 'application/pdf',
-    'ps' => 'application/postscript',
-  );
+  private $corpusType = 'text';
 
   public function processRequest() {
-
-    // Build the view selection form.
-    $select_map = array(
-      'highlighted' => 'View as Highlighted Text',
-      'blame' => 'View as Highlighted Text with Blame',
-      'plain' => 'View as Plain Text',
-      'plainblame' => 'View as Plain Text with Blame',
-      'raw' => 'View as raw document',
-    );
 
     $request = $this->getRequest();
 
@@ -55,66 +33,10 @@ class DiffusionBrowseFileController extends DiffusionController {
     $file_query->setNeedsBlame($needs_blame);
     $file_query->loadFileContent();
     $data = $file_query->getRawData();
+
     if ($selected === 'raw') {
-      $response = new AphrontFileResponse();
-      $response->setContent($data);
-      $mime_type = $this->getDocumentType($path);
-      if ($mime_type) {
-        $response->setMimeType($mime_type);
-      } else {
-        $as_filename = idx(pathinfo($path), 'basename');
-        $response->setDownload($as_filename);
-      }
-      return $response;
+      return $this->buildRawResponse($path, $data);
     }
-
-    $select = '<select name="view">';
-    foreach ($select_map as $k => $v) {
-      $option = phutil_render_tag(
-        'option',
-        array(
-          'value' => $k,
-          'selected' => ($k == $selected) ? 'selected' : null,
-        ),
-        phutil_escape_html($v));
-
-      $select .= $option;
-    }
-    $select .= '</select>';
-
-    require_celerity_resource('diffusion-source-css');
-
-    $view_select_panel = new AphrontPanelView();
-    $view_select_form = phutil_render_tag(
-      'form',
-      array(
-        'action' => $request->getRequestURI(),
-        'method' => 'get',
-        'class'  => 'diffusion-browse-type-form',
-      ),
-      $select.
-      '<button>View</button>');
-    $view_select_panel->appendChild($view_select_form);
-
-    $user = $request->getUser();
-    if ($user) {
-      $line = 1;
-      $repository = $this->getDiffusionRequest()->getRepository();
-      $editor_link = $user->loadEditorLink($path, $line, $repository);
-      if ($editor_link) {
-        $view_select_panel->addButton(
-          phutil_render_tag(
-            'a',
-            array(
-              'href' => $editor_link,
-              'class' => 'button',
-            ),
-            'Edit'
-          ));
-      }
-    }
-
-    $view_select_panel->appendChild('<div style="clear: both;"></div>');
 
     // Build the content of the file.
     $corpus = $this->buildCorpus(
@@ -123,8 +45,15 @@ class DiffusionBrowseFileController extends DiffusionController {
       $needs_blame,
       $drequest,
       $path,
-      $data
-    );
+      $data);
+
+    require_celerity_resource('diffusion-source-css');
+
+    if ($this->corpusType == 'text') {
+      $view_select_panel = $this->renderViewSelectPanel();
+    } else {
+      $view_select_panel = null;
+    }
 
     // Render the page.
     $content = array();
@@ -141,7 +70,6 @@ class DiffusionBrowseFileController extends DiffusionController {
     $nav = $this->buildSideNav('browse', true);
     $nav->appendChild($content);
 
-
     $basename = basename($this->getDiffusionRequest()->getPath());
 
     return $this->buildStandardPageResponse(
@@ -151,71 +79,24 @@ class DiffusionBrowseFileController extends DiffusionController {
       ));
   }
 
-
-  /**
-   * Returns a content-type corrsponding to an image file extension
-   *
-   * @param string $path File path
-   * @return mixed A content-type string or NULL if path doesn't end with a
-   *               recognized image extension
-   */
-  public function getImageType($path) {
-    $ext = pathinfo($path);
-    $ext = idx($ext, 'extension');
-    return idx($this->imageTypes, $ext);
-  }
-
-  /**
-   * Returns a content-type corresponding to an document file extension
-   *
-   * @param string $path File path
-   * @return mixed A content-type string or NULL if path doesn't end with a
-   *               recognized document extension
-   */
-  public function getDocumentType($path) {
-    $ext = pathinfo($path);
-    $ext = idx($ext, 'extension');
-    return idx($this->documentTypes, $ext);
-  }
-
-
   private function buildCorpus($selected,
                                $file_query,
                                $needs_blame,
                                $drequest,
                                $path,
                                $data) {
-    $image_type = $this->getImageType($path);
-    if ($image_type && !$selected) {
-      $corpus = phutil_render_tag(
-        'img',
-        array(
-          'style' => 'padding-bottom: 10px',
-          'src' => 'data:'.$image_type.';base64,'.base64_encode($data),
-        )
-      );
-      return $corpus;
-    }
 
-    $document_type = $this->getDocumentType($path);
-    if (($document_type && !$selected) || !phutil_is_utf8($data)) {
-      $data = $file_query->getRawData();
-      $document_type_description = $document_type ? $document_type : 'binary';
-      $corpus = phutil_render_tag(
-        'p',
-        array(
-          'style' => 'text-align: center;'
-        ),
-        phutil_render_tag(
-          'a',
-          array(
-            'href' => '?view=raw',
-            'class' => 'button'
-          ),
-          "View $document_type_description"
-        )
-      );
-      return $corpus;
+    if (ArcanistDiffUtils::isHeuristicBinaryFile($data)) {
+      $file = $this->loadFileForData($path, $data);
+      $file_uri = $file->getBestURI();
+
+      if ($file->isViewableImage()) {
+        $this->corpusType = 'image';
+        return $this->buildImageCorpus($file_uri);
+      } else {
+        $this->corpusType = 'binary';
+        return $this->buildBinaryCorpus($file_uri, $data);
+      }
     }
 
 
@@ -295,36 +176,91 @@ class DiffusionBrowseFileController extends DiffusionController {
     return $corpus;
   }
 
+  private function renderViewSelectPanel() {
+
+    $request = $this->getRequest();
+
+    $select = AphrontFormSelectControl::renderSelectTag(
+      $request->getStr('view'),
+      array(
+        'highlighted'   => 'View as Highlighted Text',
+        'blame'         => 'View as Highlighted Text with Blame',
+        'plain'         => 'View as Plain Text',
+        'plainblame'    => 'View as Plain Text with Blame',
+        'raw'           => 'View as raw document',
+      ),
+      array(
+        'name' => 'view',
+      ));
+
+    $view_select_panel = new AphrontPanelView();
+    $view_select_form = phutil_render_tag(
+      'form',
+      array(
+        'action' => $request->getRequestURI(),
+        'method' => 'get',
+        'class'  => 'diffusion-browse-type-form',
+      ),
+      $select.
+      ' <button>View</button> '.
+      $this->renderEditButton());
+
+    $view_select_panel->appendChild($view_select_form);
+    $view_select_panel->appendChild('<div style="clear: both;"></div>');
+
+    return $view_select_panel;
+  }
+
+  private function renderEditButton() {
+    $request = $this->getRequest();
+    $user = $request->getUser();
+
+    $drequest = $this->getDiffusionRequest();
+
+    $repository = $drequest->getRepository();
+    $path = $drequest->getPath();
+    $line = 1;
+
+    $editor_link = $user->loadEditorLink($path, $line, $repository);
+    if (!$editor_link) {
+      return null;
+    }
+
+    return phutil_render_tag(
+      'a',
+      array(
+        'href' => $editor_link,
+        'class' => 'button',
+      ),
+      'Edit');
+  }
 
   private function buildDisplayRows($text_list, $rev_list, $blame_dict,
     $needs_blame, DiffusionRequest $drequest, $file_query, $selected) {
     $last_rev = null;
-    $color = null;
+    $color = '#eeeeee';
     $rows = array();
     $n = 1;
     $view = $this->getRequest()->getStr('view');
 
     if ($blame_dict) {
       $epoch_list = ipull($blame_dict, 'epoch');
-      $max = max($epoch_list);
-      $min = min($epoch_list);
-      $range = $max - $min + 1;
-    } else {
-      $range = 1;
+      $epoch_max = max($epoch_list);
+      $epoch_min = min($epoch_list);
+      $epoch_range = $epoch_max - $epoch_min + 1;
     }
 
     $targ = '';
     $min_line = 0;
     $line = $drequest->getLine();
-    if (strpos($line,'-') !== false) {
-      list($min,$max) = explode('-',$line,2);
+    if (strpos($line, '-') !== false) {
+      list($min, $max) = explode('-', $line, 2);
       $min_line = min($min, $max);
       $max_line = max($min, $max);
     } else if (strlen($line)) {
       $min_line = $line;
       $max_line = $line;
     }
-
 
     foreach ($text_list as $k => $line) {
       if ($needs_blame) {
@@ -340,9 +276,15 @@ class DiffusionBrowseFileController extends DiffusionController {
             '<th style="background: '.$color.'"></th>';
         } else {
 
-          $color_number = (int)(0xEE -
-            0xEE * ($blame_dict[$rev]['epoch'] - $min) / $range);
-          $color = sprintf('#%02xee%02x', $color_number, $color_number);
+          $revision_time = null;
+          if ($blame_dict) {
+            $color_number = (int)(0xEE -
+              0xEE * ($blame_dict[$rev]['epoch'] - $epoch_min) / $epoch_range);
+            $color = sprintf('#%02xee%02x', $color_number, $color_number);
+            $revision_time = phabricator_datetime(
+              $blame_dict[$rev]['epoch'],
+              $this->getRequest()->getUser());
+          }
 
           $revision_link = self::renderRevision(
             $drequest,
@@ -361,8 +303,13 @@ class DiffusionBrowseFileController extends DiffusionController {
               $n,
               $selected,
               'Blame previous revision');
-            $prev_link = '<th style="background: ' . $color .
-              '; width: 2em;">' . $prev_link . '</th>';
+            $prev_link = phutil_render_tag(
+              'th',
+              array(
+                'class' => 'diffusion-wide-link',
+                'style' => 'background: '.$color.'; width: 2em;',
+              ),
+              $prev_link);
           }
 
           if (isset($blame_dict[$rev]['handle'])) {
@@ -372,8 +319,8 @@ class DiffusionBrowseFileController extends DiffusionController {
           }
           $blame_info =
             $prev_link .
-            '<th style="background: '.$color.
-              '; width: 12em;">'.$revision_link.'</th>'.
+            '<th style="background: '.$color.'; width: 12em;" title="'.
+            phutil_escape_html($revision_time).'">'.$revision_link.'</th>'.
             '<th style="background: '.$color.'; width: 12em'.
               '; font-weight: normal; color: #333;">'.$author_link.'</th>';
           $last_rev = $rev;
@@ -395,21 +342,28 @@ class DiffusionBrowseFileController extends DiffusionController {
         $targ = null;
       }
 
-      // Create the row display.
-      $uri_path = $drequest->getUriPath();
-      $uri_rev  = $drequest->getStableCommitName();
-      $uri_view = $view
-        ? '?view='.$view
-        : null;
+      $href = $drequest->generateURI(
+        array(
+          'action' => 'browse',
+          'stable' => true,
+        ));
+      $href = (string)$href;
 
-      $l = phutil_render_tag(
+      $query_params = null;
+      if ($view) {
+        $query_params = '?view='.$view;
+      }
+
+      $link = phutil_render_tag(
         'a',
         array(
-          'href' => $uri_path.';'.$uri_rev.'$'.$n.$uri_view,
+          'href' => $href.'$'.$n.$query_params,
         ),
         $n);
 
-      $rows[] = $tr.$blame_info.'<th>'.$l.'</th><td>'.$targ.$line.'</td></tr>';
+      $rows[] = $tr.$blame_info.
+        '<th class="diffusion-wide-link">'.$link.'</th>'.
+        '<td>'.$targ.$line.'</td></tr>';
       ++$n;
     }
 
@@ -469,6 +423,66 @@ class DiffusionBrowseFileController extends DiffusionController {
       ),
       $name
     );
+  }
+
+  private function loadFileForData($path, $data) {
+    $hash = PhabricatorHash::digest($data);
+
+    $file = id(new PhabricatorFile())->loadOneWhere(
+      'contentHash = %s LIMIT 1',
+      $hash);
+    if (!$file) {
+      // We're just caching the data; this is always safe.
+      $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
+
+      $file = PhabricatorFile::newFromFileData(
+        $data,
+        array(
+          'name' => basename($path),
+        ));
+
+      unset($unguarded);
+    }
+
+    return $file;
+  }
+
+  private function buildRawResponse($path, $data) {
+    $file = $this->loadFileForData($path, $data);
+    return id(new AphrontRedirectResponse())->setURI($file->getBestURI());
+  }
+
+  private function buildImageCorpus($file_uri) {
+    $panel = new AphrontPanelView();
+    $panel->setHeader('Image');
+    $panel->addButton($this->renderEditButton());
+    $panel->appendChild(
+      phutil_render_tag(
+        'img',
+        array(
+          'src' => $file_uri,
+        )));
+    return $panel;
+  }
+
+  private function buildBinaryCorpus($file_uri, $data) {
+    $panel = new AphrontPanelView();
+    $panel->setHeader('Binary File');
+    $panel->addButton($this->renderEditButton());
+    $panel->appendChild(
+      '<p>'.
+        'This is a binary file. '.
+        'It is '.number_format(strlen($data)).' bytes in length.'.
+      '</p>');
+    $panel->addButton(
+      phutil_render_tag(
+        'a',
+        array(
+          'href' => $file_uri,
+          'class' => 'button green',
+        ),
+        'Download Binary File...'));
+    return $panel;
   }
 
 

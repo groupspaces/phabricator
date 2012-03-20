@@ -16,9 +16,16 @@
  * limitations under the License.
  */
 
-class DiffusionCommitController extends DiffusionController {
+final class DiffusionCommitController extends DiffusionController {
 
   const CHANGES_LIMIT = 100;
+
+  public function willProcessRequest(array $data) {
+    // This controller doesn't use blob/path stuff, just pass the dictionary
+    // in directly instead of using the AphrontRequest parsing mechanism.
+    $drequest = DiffusionRequest::newFromDictionary($data);
+    $this->diffusionRequest = $drequest;
+  }
 
   public function processRequest() {
     $drequest = $this->getDiffusionRequest();
@@ -192,11 +199,22 @@ class DiffusionCommitController extends DiffusionController {
           }
         }
 
-        $branch = $drequest->getBranchURIComponent(
-          $drequest->getBranch());
-        $filename = $changeset->getFilename();
-        $reference = "{$branch}{$filename};".$drequest->getCommit();
-        $references[$key] = $reference;
+        $references[$key] = $drequest->generateURI(
+          array(
+            'action' => 'rendering-ref',
+            'path'   => $changeset->getFilename(),
+          ));
+      }
+
+      // TOOD: Some parts of the views still rely on properties of the
+      // DifferentialChangeset. Make the objects ephemeral to make sure we don't
+      // accidentally save them, and then set their ID to the appropriate ID for
+      // this application (the path IDs).
+      $pquery = new DiffusionPathIDQuery(mpull($changesets, 'getFilename'));
+      $path_ids = $pquery->loadPathIDs();
+      foreach ($changesets as $changeset) {
+        $changeset->makeEphemeral();
+        $changeset->setID($path_ids[$changeset->getFilename()]);
       }
 
       $change_list = new DifferentialChangesetListView();
@@ -204,6 +222,17 @@ class DiffusionCommitController extends DiffusionController {
       $change_list->setRenderingReferences($references);
       $change_list->setRenderURI('/diffusion/'.$callsign.'/diff/');
       $change_list->setUser($user);
+
+      $change_list->setStandaloneURI(
+        '/diffusion/'.$callsign.'/diff/');
+      $change_list->setRawFileURIs(
+        // TODO: Implement this, somewhat tricky if there's an octopus merge
+        // or whatever?
+        null,
+        '/diffusion/'.$callsign.'/diff/?view=r');
+
+      $change_list->setInlineCommentControllerURI(
+        '/diffusion/inline/'.phutil_escape_uri($commit->getPHID()).'/');
 
       // TODO: This is pretty awkward, unify the CSS between Diffusion and
       // Differential better.
@@ -268,6 +297,11 @@ class DiffusionCommitController extends DiffusionController {
       $props['Differential Revision'] = $handles[$revision_phid]->renderLink();
     }
 
+    if ($commit->getAuditStatus()) {
+      $props['Audit'] = PhabricatorAuditCommitStatusConstants::getStatusName(
+        $commit->getAuditStatus());
+    }
+
     $request = $this->getDiffusionRequest();
 
     $contains = DiffusionContainsQuery::newFromDiffusionRequest($request);
@@ -296,6 +330,8 @@ class DiffusionCommitController extends DiffusionController {
   }
 
   private function buildAuditTable($commit) {
+    $user = $this->getRequest()->getUser();
+
     $query = new PhabricatorAuditQuery();
     $query->withCommitPHIDs(array($commit->getPHID()));
     $audits = $query->execute();
@@ -306,6 +342,8 @@ class DiffusionCommitController extends DiffusionController {
     $phids = $view->getRequiredHandlePHIDs();
     $handles = id(new PhabricatorObjectHandleData($phids))->loadHandles();
     $view->setHandles($handles);
+    $view->setAuthorityPHIDs(
+      PhabricatorAuditCommentEditor::loadAuditPHIDsForUser($user));
 
     $panel = new AphrontPanelView();
     $panel->setHeader('Audits');
@@ -320,9 +358,25 @@ class DiffusionCommitController extends DiffusionController {
       'targetPHID = %s ORDER BY dateCreated ASC',
       $commit->getPHID());
 
+    $inlines = id(new PhabricatorAuditInlineComment())->loadAllWhere(
+      'commitPHID = %s AND auditCommentID IS NOT NULL',
+      $commit->getPHID());
+
+    $path_ids = mpull($inlines, 'getPathID');
+
+    $path_map = array();
+    if ($path_ids) {
+      $path_map = id(new DiffusionPathQuery())
+        ->withPathIDs($path_ids)
+        ->execute();
+      $path_map = ipull($path_map, 'path', 'id');
+    }
+
     $view = new DiffusionCommentListView();
     $view->setUser($user);
     $view->setComments($comments);
+    $view->setInlineComments($inlines);
+    $view->setPathMap($path_map);
 
     $phids = $view->getRequiredHandlePHIDs();
     $handles = id(new PhabricatorObjectHandleData($phids))->loadHandles();
@@ -336,6 +390,23 @@ class DiffusionCommitController extends DiffusionController {
 
     $is_serious = PhabricatorEnv::getEnvConfig('phabricator.serious-business');
 
+    Javelin::initBehavior(
+      'differential-keyboard-navigation',
+      array(
+        // TODO: Make this comment panel hauntable
+        'haunt' => null,
+      ));
+
+    $draft = id(new PhabricatorDraft())->loadOneWhere(
+      'authorPHID = %s AND draftKey = %s',
+      $user->getPHID(),
+      'diffusion-audit-'.$commit->getID());
+    if ($draft) {
+      $draft = $draft->getDraft();
+    } else {
+      $draft = null;
+    }
+
     $form = id(new AphrontFormView())
       ->setUser($user)
       ->setAction('/audit/addcomment/')
@@ -344,11 +415,14 @@ class DiffusionCommitController extends DiffusionController {
         id(new AphrontFormSelectControl())
           ->setLabel('Action')
           ->setName('action')
+          ->setID('audit-action')
           ->setOptions(PhabricatorAuditActionConstants::getActionNameMap()))
       ->appendChild(
         id(new AphrontFormTextAreaControl())
           ->setLabel('Comments')
           ->setName('content')
+          ->setValue($draft)
+          ->setID('audit-content')
           ->setCaption(phutil_render_tag(
             'a',
             array(
@@ -366,7 +440,28 @@ class DiffusionCommitController extends DiffusionController {
     $panel->setHeader($is_serious ? 'Audit Commit' : 'Creative Accounting');
     $panel->appendChild($form);
 
-    return $panel;
+    require_celerity_resource('phabricator-transaction-view-css');
+
+    Javelin::initBehavior('audit-preview', array(
+      'uri'       => '/audit/preview/'.$commit->getID().'/',
+      'preview'   => 'audit-preview',
+      'content'   => 'audit-content',
+      'action'    => 'audit-action',
+    ));
+
+    $preview_panel =
+      '<div class="aphront-panel-preview">
+        <div id="audit-preview">
+          <div class="aphront-panel-preview-loading-text">
+            Loading preview...
+          </div>
+        </div>
+      </div>';
+
+    $view = new AphrontNullView();
+    $view->appendChild($panel);
+    $view->appendChild($preview_panel);
+    return $view;
   }
 
 }

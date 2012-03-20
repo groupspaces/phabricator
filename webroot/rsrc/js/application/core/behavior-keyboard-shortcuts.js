@@ -3,6 +3,7 @@
  * @requires javelin-behavior
  *           javelin-workflow
  *           javelin-json
+ *           javelin-dom
  *           phabricator-keyboard-shortcut
  */
 
@@ -28,4 +29,15 @@ JX.behavior('phabricator-keyboard-shortcuts', function(config) {
       workflow.start();
     })
     .register();
+
+    if (config.search_shortcut) {
+      desc = 'Give keyboard focus to the search box.';
+      new JX.KeyboardShortcut('/', desc)
+        .setHandler(function() {
+          var search = JX.$("standard-search-box");
+          search.focus();
+          search.select();
+        })
+        .register();
+    }
 });

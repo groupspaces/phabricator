@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class DiffusionPathValidateController extends DiffusionController {
+final class DiffusionPathValidateController extends DiffusionController {
 
   public function willProcessRequest(array $data) {
     // Don't build a DiffusionRequest.
@@ -36,10 +36,10 @@ class DiffusionPathValidateController extends DiffusionController {
     $path = $request->getStr('path');
     $path = ltrim($path, '/');
 
-    $drequest = DiffusionRequest::newFromAphrontRequestDictionary(
+    $drequest = DiffusionRequest::newFromDictionary(
       array(
-        'callsign'  => $repository->getCallsign(),
-        'path'      => ':/'.$path,
+        'repository'  => $repository,
+        'path'        => $path,
       ));
 
     $browse_query = DiffusionBrowseQuery::newFromDiffusionRequest($drequest);

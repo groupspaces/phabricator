@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class PhabricatorOwnersPackage extends PhabricatorOwnersDAO {
+final class PhabricatorOwnersPackage extends PhabricatorOwnersDAO {
 
   protected $phid;
   protected $name;
@@ -188,10 +188,10 @@ class PhabricatorOwnersPackage extends PhabricatorOwnersDAO {
         foreach ($paths as $path => $ignored) {
           $path = ltrim($path, '/');
           // build query to validate path
-          $drequest = DiffusionRequest::newFromAphrontRequestDictionary(
+          $drequest = DiffusionRequest::newFromDictionary(
             array(
-              'callsign' => $repository->getCallsign(),
-              'path'     => ':/'.$path,
+              'repository'  => $repository,
+              'path'        => $path,
             ));
           $query = DiffusionBrowseQuery::newFromDiffusionRequest($drequest);
           $query->needValidityOnly(true);

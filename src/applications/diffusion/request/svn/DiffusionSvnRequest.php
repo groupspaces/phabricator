@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,21 @@
  * limitations under the License.
  */
 
-class DiffusionSvnRequest extends DiffusionRequest {
+/**
+ * @group diffusion
+ */
+final class DiffusionSvnRequest extends DiffusionRequest {
 
-  protected function initializeFromAphrontRequestDictionary(array $data) {
-    parent::initializeFromAphrontRequestDictionary($data);
+  protected function getSupportsBranches() {
+    return false;
+  }
 
+  protected function didInitialize() {
     if ($this->path === null) {
       $subpath = $this->repository->getDetail('svn-subpath');
       if ($subpath) {
         $this->path = $subpath;
       }
-    }
-
-    if (!strncmp($this->path, ':', 1)) {
-      $this->path = substr($this->path, 1);
-      $this->path = ltrim($this->path, '/');
     }
   }
 

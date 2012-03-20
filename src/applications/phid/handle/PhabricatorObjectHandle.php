@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class PhabricatorObjectHandle {
+final class PhabricatorObjectHandle {
 
   private $uri;
   private $phid;
@@ -218,10 +218,12 @@ class PhabricatorObjectHandle {
   public function getLinkName() {
     switch ($this->getType()) {
       case PhabricatorPHIDConstants::PHID_TYPE_USER:
+      case PhabricatorPHIDConstants::PHID_TYPE_CMIT:
         $name = $this->getName();
         break;
       default:
         $name = $this->getFullName();
+        break;
     }
     return $name;
   }

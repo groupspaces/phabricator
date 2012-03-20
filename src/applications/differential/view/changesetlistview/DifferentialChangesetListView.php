@@ -16,15 +16,18 @@
  * limitations under the License.
  */
 
-class DifferentialChangesetListView extends AphrontView {
+final class DifferentialChangesetListView extends AphrontView {
 
   private $changesets = array();
   private $references = array();
-  private $editable;
-  private $revision;
+  private $inlineURI;
   private $renderURI = '/differential/changeset/';
   private $whitespace;
-  private $standaloneViews;
+
+  private $standaloneURI;
+  private $leftRawFileURI;
+  private $rightRawFileURI;
+
   private $user;
   private $symbolIndexes = array();
   private $repository;
@@ -36,23 +39,13 @@ class DifferentialChangesetListView extends AphrontView {
     return $this;
   }
 
-  public function setEditable($editable) {
-    $this->editable = $editable;
-    return $this;
-  }
-
-  public function setStandaloneViews($has_standalone_views) {
-    $this->standaloneViews = $has_standalone_views;
+  public function setInlineCommentControllerURI($uri) {
+    $this->inlineURI = $uri;
     return $this;
   }
 
   public function setUser(PhabricatorUser $user) {
     $this->user = $user;
-    return $this;
-  }
-
-  public function setRevision(DifferentialRevision $revision) {
-    $this->revision = $revision;
     return $this;
   }
 
@@ -95,26 +88,30 @@ class DifferentialChangesetListView extends AphrontView {
     return $this->vsMap;
   }
 
+  public function setStandaloneURI($uri) {
+    $this->standaloneURI = $uri;
+    return $this;
+  }
+
+  public function setRawFileURIs($l, $r) {
+    $this->leftRawFileURI = $l;
+    $this->rightRawFileURI = $r;
+    return $this;
+  }
+
   public function render() {
     require_celerity_resource('differential-changeset-view-css');
 
     $changesets = $this->changesets;
 
-    if ($this->standaloneViews) {
-      Javelin::initBehavior(
-        'differential-dropdown-menus',
-        array());
-    }
-
     Javelin::initBehavior('buoyant', array());
 
     $output = array();
     $mapping = array();
-    $repository = $this->repository;
     foreach ($changesets as $key => $changeset) {
       $file = $changeset->getFilename();
       $class = 'differential-changeset';
-      if (!$this->editable) {
+      if (!$this->inlineURI) {
         $class .= ' differential-changeset-noneditable';
       }
 
@@ -122,59 +119,13 @@ class DifferentialChangesetListView extends AphrontView {
 
       $detail = new DifferentialChangesetDetailView();
 
-      $detail_button = null;
-      if ($this->standaloneViews) {
-        $detail_uri = new PhutilURI($this->renderURI);
-        $detail_uri->setQueryParams(array('ref' => $ref));
-
-        $diffusion_uri = null;
-        if ($repository) {
-          $diffusion_uri = $repository->getDiffusionBrowseURIForPath(
-            $changeset->getAbsoluteRepositoryPath($this->diff, $repository));
-        }
-
-        $meta = array(
-          'detailURI'     =>
-            (string)$detail_uri->alter('whitespace', $this->whitespace),
-          'diffusionURI'  => $diffusion_uri,
-          'containerID'   => $detail->getID(),
-        );
-        $change = $changeset->getChangeType();
-        if ($change != DifferentialChangeType::TYPE_ADD) {
-          $meta['leftURI'] = (string)$detail_uri->alter('view', 'old');
-        }
-        if ($change != DifferentialChangeType::TYPE_DELETE &&
-            $change != DifferentialChangeType::TYPE_MULTICOPY) {
-          $meta['rightURI'] = (string)$detail_uri->alter('view', 'new');
-        }
-
-        if ($this->user && $repository) {
-          $path = ltrim(
-            $changeset->getAbsoluteRepositoryPath($this->diff, $repository),
-            '/');
-          $line = 1; // TODO: get first changed line
-          $editor_link = $this->user->loadEditorLink($path, $line, $repository);
-          if ($editor_link) {
-            $meta['editor'] = $editor_link;
-          } else {
-            $meta['editorConfigure'] = '/settings/page/preferences/';
-          }
-        }
-
-        $detail_button = javelin_render_tag(
-          'a',
-          array(
-            'class'   => 'button small grey',
-            'meta'    => $meta,
-            'href'    => $meta['detailURI'],
-            'target'  => '_blank',
-            'sigil'   => 'differential-view-options',
-          ),
-          "View Options \xE2\x96\xBC");
-      }
+      $view_options = $this->renderViewOptionsDropdown(
+        $detail,
+        $ref,
+        $changeset);
 
       $detail->setChangeset($changeset);
-      $detail->addButton($detail_button);
+      $detail->addButton($view_options);
       $detail->setSymbolIndex(idx($this->symbolIndexes, $key));
       $detail->setVsChangesetID(idx($this->vsMap, $changeset->getID()));
 
@@ -191,6 +142,8 @@ class DifferentialChangesetListView extends AphrontView {
       $mapping[$uniq_id] = $ref;
     }
 
+    require_celerity_resource('aphront-tooltip-css');
+
     Javelin::initBehavior('differential-populate', array(
       'registry'    => $mapping,
       'whitespace'  => $this->whitespace,
@@ -204,21 +157,23 @@ class DifferentialChangesetListView extends AphrontView {
 
     Javelin::initBehavior('differential-comment-jump', array());
 
-    if ($this->editable) {
-
+    if ($this->inlineURI) {
       $undo_templates = $this->renderUndoTemplates();
 
-      $revision = $this->revision;
       Javelin::initBehavior('differential-edit-inline-comments', array(
-        'uri' => '/differential/comment/inline/edit/'.$revision->getID().'/',
-        'undo_templates' => $undo_templates,
+        'uri'             => $this->inlineURI,
+        'undo_templates'  => $undo_templates,
+        'stage'           => 'differential-review-stage',
       ));
     }
 
-    return
-      '<div class="differential-review-stage" id="differential-review-stage">'.
-        implode("\n", $output).
-      '</div>';
+    return phutil_render_tag(
+      'div',
+      array(
+        'class' => 'differential-review-stage',
+        'id'    => 'differential-review-stage',
+      ),
+      implode("\n", $output));
   }
 
   /**
@@ -250,6 +205,81 @@ class DifferentialChangesetListView extends AphrontView {
       'l' => '<table><tr>'.implode('', $left).'</tr></table>',
       'r' => '<table><tr>'.implode('', $right).'</tr></table>',
     );
+  }
+
+  private function renderViewOptionsDropdown(
+    DifferentialChangesetDetailView $detail,
+    $ref,
+    DifferentialChangeset $changeset) {
+
+    $meta = array();
+
+    $qparams = array(
+      'ref'         => $ref,
+      'whitespace'  => $this->whitespace,
+    );
+
+    if ($this->standaloneURI) {
+      $uri = new PhutilURI($this->standaloneURI);
+      $uri->setQueryParams($uri->getQueryParams() + $qparams);
+      $meta['standaloneURI'] = (string)$uri;
+    }
+
+    $repository = $this->repository;
+    if ($repository) {
+      $meta['diffusionURI'] = $repository->getDiffusionBrowseURIForPath(
+        $changeset->getAbsoluteRepositoryPath($this->diff, $repository));
+    }
+
+    $change = $changeset->getChangeType();
+
+    if ($this->leftRawFileURI) {
+      if ($change != DifferentialChangeType::TYPE_ADD) {
+        $uri = new PhutilURI($this->leftRawFileURI);
+        $uri->setQueryParams($uri->getQueryParams() + $qparams);
+        $meta['leftURI'] = (string)$uri;
+      }
+    }
+
+    if ($this->rightRawFileURI) {
+      if ($change != DifferentialChangeType::TYPE_DELETE &&
+          $change != DifferentialChangeType::TYPE_MULTICOPY) {
+        $uri = new PhutilURI($this->rightRawFileURI);
+        $uri->setQueryParams($uri->getQueryParams() + $qparams);
+        $meta['rightURI'] = (string)$uri;
+      }
+    }
+
+    $user = $this->user;
+    if ($user && $repository) {
+      $path = ltrim(
+        $changeset->getAbsoluteRepositoryPath($this->diff, $repository),
+        '/');
+      $line = 1; // TODO: get first changed line
+      $editor_link = $user->loadEditorLink($path, $line, $repository);
+      if ($editor_link) {
+        $meta['editor'] = $editor_link;
+      } else {
+        $meta['editorConfigure'] = '/settings/page/preferences/';
+      }
+    }
+
+    $meta['containerID'] = $detail->getID();
+
+    Javelin::initBehavior(
+      'differential-dropdown-menus',
+      array());
+
+    return javelin_render_tag(
+      'a',
+      array(
+        'class'   => 'button small grey',
+        'meta'    => $meta,
+        'href'    => idx($meta, 'detailURI', '#'),
+        'target'  => '_blank',
+        'sigil'   => 'differential-view-options',
+      ),
+      "View Options \xE2\x96\xBC");
   }
 
 }

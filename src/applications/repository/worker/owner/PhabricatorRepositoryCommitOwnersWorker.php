@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class PhabricatorRepositoryCommitOwnersWorker
+final class PhabricatorRepositoryCommitOwnersWorker
   extends PhabricatorRepositoryCommitParserWorker {
 
   protected function parseCommit(
@@ -30,37 +30,46 @@ class PhabricatorRepositoryCommitOwnersWorker
       $affected_paths);
 
     if ($affected_packages) {
-      foreach ($affected_packages as $package) {
-        $relationship = id(new PhabricatorOwnersPackageCommitRelationship())
-          ->loadOneWhere('packagePHID=%s AND commitPHID=%s',
-          $package->getPHID(),
+      $requests = id(new PhabricatorRepositoryAuditRequest())
+        ->loadAllWhere(
+          'commitPHID = %s',
           $commit->getPHID());
+      $requests = mpull($requests, null, 'getAuditorPHID');
 
-        // Don't update relationship if it exists already
-        if (!$relationship) {
-          if ($package->getAuditingEnabled()) {
-            $reasons = $this->checkAuditReasons($commit, $package);
-            if ($reasons) {
-              $audit_status =
-                PhabricatorAuditStatusConstants::AUDIT_REQUIRED;
-            } else {
-              $audit_status =
-                PhabricatorAuditStatusConstants::AUDIT_NOT_REQUIRED;
-            }
-          } else {
-            $reasons = array();
-            $audit_status = PhabricatorAuditStatusConstants::NONE;
-          }
-
-          $relationship = new PhabricatorOwnersPackageCommitRelationship();
-          $relationship->setPackagePHID($package->getPHID());
-          $relationship->setCommitPHID($commit->getPHID());
-          $relationship->setAuditReasons($reasons);
-          $relationship->setAuditStatus($audit_status);
-
-          $relationship->save();
+      foreach ($affected_packages as $package) {
+        $request = idx($requests, $package->getPHID());
+        if ($request) {
+          // Don't update request if it exists already.
+          continue;
         }
+
+        if ($package->getAuditingEnabled()) {
+          $reasons = $this->checkAuditReasons($commit, $package);
+          if ($reasons) {
+            $audit_status =
+              PhabricatorAuditStatusConstants::AUDIT_REQUIRED;
+          } else {
+            $audit_status =
+              PhabricatorAuditStatusConstants::AUDIT_NOT_REQUIRED;
+          }
+        } else {
+          $reasons = array();
+          $audit_status = PhabricatorAuditStatusConstants::NONE;
+        }
+
+        $relationship = new PhabricatorRepositoryAuditRequest();
+        $relationship->setAuditorPHID($package->getPHID());
+        $relationship->setCommitPHID($commit->getPHID());
+        $relationship->setAuditReasons($reasons);
+        $relationship->setAuditStatus($audit_status);
+
+        $relationship->save();
+
+        $requests[$package->getPHID()] = $relationship;
       }
+
+      $commit->updateAuditStatus($requests);
+      $commit->save();
     }
 
     if ($this->shouldQueueFollowupTasks()) {
@@ -90,7 +99,11 @@ class PhabricatorRepositoryCommitOwnersWorker
     }
 
     $revision_id = $data->getCommitDetail('differential.revisionID');
+
     $revision_author_phid = null;
+    $commit_reviewedby_phid = null;
+    $commit_author_phid = null;
+
     if ($revision_id) {
       $revision = id(new DifferentialRevision())->load($revision_id);
       if ($revision) {

@@ -40,13 +40,23 @@ final class PhabricatorAuditAddCommentController
       ->setAction($request->getStr('action'))
       ->setContent($request->getStr('content'));
 
+
     id(new PhabricatorAuditCommentEditor($commit))
       ->setUser($user)
+      ->setAttachInlineComments(true)
       ->addComment($comment);
 
     $phids = array($commit_phid);
     $handles = id(new PhabricatorObjectHandleData($phids))->loadHandles();
     $uri = $handles[$commit_phid]->getURI();
+
+    $draft = id(new PhabricatorDraft())->loadOneWhere(
+      'authorPHID = %s AND draftKey = %s',
+      $user->getPHID(),
+      'diffusion-audit-'.$commit->getID());
+    if ($draft) {
+      $draft->delete();
+    }
 
     return id(new AphrontRedirectResponse())->setURI($uri);
   }

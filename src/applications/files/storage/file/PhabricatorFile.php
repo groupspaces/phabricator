@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class PhabricatorFile extends PhabricatorFileDAO {
+final class PhabricatorFile extends PhabricatorFileDAO {
 
   const STORAGE_FORMAT_RAW  = 'raw';
 
@@ -26,6 +26,7 @@ class PhabricatorFile extends PhabricatorFileDAO {
   protected $byteSize;
   protected $authorPHID;
   protected $secretKey;
+  protected $contentHash;
 
   protected $storageEngine;
   protected $storageFormat;
@@ -138,6 +139,7 @@ class PhabricatorFile extends PhabricatorFileDAO {
     $file->setName($file_name);
     $file->setByteSize(strlen($data));
     $file->setAuthorPHID($authorPHID);
+    $file->setContentHash(PhabricatorHash::digest($data));
 
     $file->setStorageEngine($engine_identifier);
     $file->setStorageHandle($data_handle);
@@ -254,6 +256,16 @@ class PhabricatorFile extends PhabricatorFileDAO {
     return ($this->getViewableMimeType() !== null);
   }
 
+  public function isViewableImage() {
+    if (!$this->isViewableInBrowser()) {
+      return false;
+    }
+
+    $mime_map = PhabricatorEnv::getEnvConfig('files.image-mime-types');
+    $mime_type = $this->getMimeType();
+    return idx($mime_map, $mime_type);
+  }
+
   public function isTransformableImage() {
 
     // NOTE: The way the 'gd' extension works in PHP is that you can install it
@@ -284,6 +296,24 @@ class PhabricatorFile extends PhabricatorFileDAO {
       default:
         throw new Exception('Unknown type matched as image MIME type.');
     }
+  }
+
+  public static function getTransformableImageFormats() {
+    $supported = array();
+
+    if (function_exists('imagejpeg')) {
+      $supported[] = 'jpg';
+    }
+
+    if (function_exists('imagepng')) {
+      $supported[] = 'png';
+    }
+
+    if (function_exists('imagegif')) {
+      $supported[] = 'gif';
+    }
+
+    return $supported;
   }
 
   protected function instantiateStorageEngine() {

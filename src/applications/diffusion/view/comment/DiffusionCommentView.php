@@ -22,6 +22,12 @@ final class DiffusionCommentView extends AphrontView {
   private $comment;
   private $commentNumber;
   private $handles;
+  private $isPreview;
+  private $pathMap;
+
+  private $inlineComments;
+
+  private $engine;
 
   public function setUser(PhabricatorUser $user) {
     $this->user = $user;
@@ -41,6 +47,25 @@ final class DiffusionCommentView extends AphrontView {
   public function setHandles(array $handles) {
     $this->handles = $handles;
     return $this;
+  }
+
+  public function setIsPreview($is_preview) {
+    $this->isPreview = $is_preview;
+    return $this;
+  }
+
+  public function setInlineComments(array $inline_comments) {
+    $this->inlineComments = $inline_comments;
+    return $this;
+  }
+
+  public function setPathMap(array $path_map) {
+    $this->pathMap = $path_map;
+    return $this;
+  }
+
+  public function getRequiredHandlePHIDs() {
+    return array($this->comment->getActorPHID());
   }
 
   private function getHandle($phid) {
@@ -63,15 +88,21 @@ final class DiffusionCommentView extends AphrontView {
       ->setUser($this->user)
       ->setImageURI($author->getImageURI())
       ->setActions($actions)
-      ->setAnchor('comment-'.$this->commentNumber, '#'.$this->commentNumber)
-      ->setEpoch($comment->getDateCreated())
       ->appendChild($content);
+
+    if ($this->isPreview) {
+      $xaction_view->setIsPreview(true);
+    } else {
+      $xaction_view
+        ->setAnchor('comment-'.$this->commentNumber, '#'.$this->commentNumber)
+        ->setEpoch($comment->getDateCreated());
+    }
 
     foreach ($classes as $class) {
       $xaction_view->addClass($class);
     }
 
-    return $xaction_view;
+    return $xaction_view->render();
   }
 
   private function renderActions() {
@@ -102,12 +133,52 @@ final class DiffusionCommentView extends AphrontView {
 
   private function renderContent() {
     $comment = $this->comment;
+    $engine = $this->getEngine();
 
-    $engine = PhabricatorMarkupEngine::newDiffusionMarkupEngine();
     return
       '<div class="phabricator-remarkup">'.
         $engine->markupText($comment->getContent()).
+        $this->renderSingleView($this->renderInlines()).
       '</div>';
+  }
+
+  private function renderInlines() {
+    if (!$this->inlineComments) {
+      return null;
+    }
+
+    $inlines_by_path = mgroup($this->inlineComments, 'getPathID');
+
+    $view = new PhabricatorInlineSummaryView();
+    foreach ($inlines_by_path as $path_id => $inlines) {
+      $path = idx($this->pathMap, $path_id);
+      if ($path === null) {
+        continue;
+      }
+
+      $items = array();
+      foreach ($inlines as $inline) {
+        $items[] = array(
+          'id'      => $inline->getID(),
+          'line'    => $inline->getLineNumber(),
+          'length'  => $inline->getLineLength(),
+          'content' => PhabricatorInlineSummaryView::renderCommentContent(
+            $inline,
+            $this->getEngine()),
+        );
+      }
+
+      $view->addCommentGroup($path, $items);
+    }
+
+    return $view;
+  }
+
+  private function getEngine() {
+    if (!$this->engine) {
+      $this->engine = PhabricatorMarkupEngine::newDiffusionMarkupEngine();
+    }
+    return $this->engine;
   }
 
   private function renderClasses() {
@@ -125,8 +196,5 @@ final class DiffusionCommentView extends AphrontView {
 
     return $classes;
   }
-
-
-
 
 }

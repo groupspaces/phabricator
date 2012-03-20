@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,10 @@ final class ManiphestTaskQuery {
   private $ownerPHIDs       = array();
   private $includeUnowned   = null;
   private $projectPHIDs     = array();
+  private $xprojectPHIDs    = array();
   private $subscriberPHIDs  = array();
   private $anyProject       = false;
+  private $includeNoProject = null;
 
   private $status           = 'status-any';
   const STATUS_ANY          = 'status-any';
@@ -44,6 +46,7 @@ final class ManiphestTaskQuery {
   const GROUP_PRIORITY      = 'group-priority';
   const GROUP_OWNER         = 'group-owner';
   const GROUP_STATUS        = 'group-status';
+  const GROUP_PROJECT       = 'group-project';
 
   private $orderBy          = 'order-modified';
   const ORDER_PRIORITY      = 'order-priority';
@@ -83,7 +86,19 @@ final class ManiphestTaskQuery {
   }
 
   public function withProjects(array $projects) {
+    $this->includeNoProject = false;
+    foreach ($projects as $k => $phid) {
+      if ($phid == ManiphestTaskOwner::PROJECT_NO_PROJECT) {
+        $this->includeNoProject = true;
+        unset($projects[$k]);
+      }
+    }
     $this->projectPHIDs = $projects;
+    return $this;
+  }
+
+  public function withoutProjects(array $projects) {
+    $this->xprojectPHIDs = $projects;
     return $this;
   }
 
@@ -160,6 +175,7 @@ final class ManiphestTaskQuery {
     $where[] = $this->buildOwnerWhereClause($conn);
     $where[] = $this->buildSubscriberWhereClause($conn);
     $where[] = $this->buildProjectWhereClause($conn);
+    $where[] = $this->buildXProjectWhereClause($conn);
 
     $where = array_filter($where);
     if ($where) {
@@ -170,6 +186,7 @@ final class ManiphestTaskQuery {
 
     $join = array();
     $join[] = $this->buildProjectJoinClause($conn);
+    $join[] = $this->buildXProjectJoinClause($conn);
     $join[] = $this->buildSubscriberJoinClause($conn);
 
     $join = array_filter($join);
@@ -195,7 +212,7 @@ final class ManiphestTaskQuery {
       $group = 'GROUP BY task.id';
 
       if (!$this->anyProject) {
-        $count = ', COUNT(1) projectCount';
+        $count = ', COUNT(project.projectPHID) projectCount';
         $having = qsprintf(
           $conn,
           'HAVING projectCount = %d',
@@ -207,6 +224,11 @@ final class ManiphestTaskQuery {
 
     $offset = (int)nonempty($this->offset, 0);
     $limit  = (int)nonempty($this->limit, self::DEFAULT_PAGE_SIZE);
+
+    if ($this->groupBy == self::GROUP_PROJECT) {
+      $limit  = PHP_INT_MAX;
+      $offset = 0;
+    }
 
     $data = queryfx_all(
       $conn,
@@ -231,7 +253,13 @@ final class ManiphestTaskQuery {
       $this->rowCount = null;
     }
 
-    return $task_dao->loadAllFromArray($data);
+    $tasks = $task_dao->loadAllFromArray($data);
+
+    if ($this->groupBy == self::GROUP_PROJECT) {
+      $tasks = $this->applyGroupByProject($tasks);
+    }
+
+    return $tasks;
   }
 
   private function buildTaskIDsWhereClause($conn) {
@@ -320,26 +348,61 @@ final class ManiphestTaskQuery {
   }
 
   private function buildProjectWhereClause($conn) {
-    if (!$this->projectPHIDs) {
+    if (!$this->projectPHIDs && !$this->includeNoProject) {
       return null;
     }
 
-    return qsprintf(
-      $conn,
-      'project.projectPHID IN (%Ls)',
-      $this->projectPHIDs);
+    $parts = array();
+    if ($this->projectPHIDs) {
+      $parts[] = qsprintf(
+        $conn,
+        'project.projectPHID in (%Ls)',
+        $this->projectPHIDs);
+    }
+    if ($this->includeNoProject) {
+      $parts[] = qsprintf(
+        $conn,
+        'project.projectPHID IS NULL');
+    }
+
+    return '('.implode(') OR (', $parts).')';
   }
 
   private function buildProjectJoinClause($conn) {
-    if (!$this->projectPHIDs) {
+    if (!$this->projectPHIDs && !$this->includeNoProject) {
       return null;
     }
 
     $project_dao = new ManiphestTaskProject();
     return qsprintf(
       $conn,
-      'JOIN %T project ON project.taskPHID = task.phid',
+      '%Q JOIN %T project ON project.taskPHID = task.phid',
+      ($this->includeNoProject ? 'LEFT' : ''),
       $project_dao->getTableName());
+  }
+
+  private function buildXProjectWhereClause($conn) {
+    if (!$this->xprojectPHIDs) {
+      return null;
+    }
+
+    return qsprintf(
+      $conn,
+      'xproject.projectPHID IS NULL');
+  }
+
+  private function buildXProjectJoinClause($conn) {
+    if (!$this->xprojectPHIDs) {
+      return null;
+    }
+
+    $project_dao = new ManiphestTaskProject();
+    return qsprintf(
+      $conn,
+      'LEFT JOIN %T xproject ON xproject.taskPHID = task.phid
+        AND xproject.projectPHID IN (%Ls)',
+      $project_dao->getTableName(),
+      $this->xprojectPHIDs);
   }
 
   private function buildSubscriberJoinClause($conn) {
@@ -368,6 +431,10 @@ final class ManiphestTaskQuery {
         break;
       case self::GROUP_STATUS:
         $order[] = 'status';
+        break;
+      case self::GROUP_PROJECT:
+        // NOTE: We have to load the entire result set and apply this grouping
+        // in the PHP process for now.
         break;
       default:
         throw new Exception("Unknown group query '{$this->groupBy}'!");
@@ -408,5 +475,70 @@ final class ManiphestTaskQuery {
     return 'ORDER BY '.implode(', ', $order);
   }
 
+
+  /**
+   * To get paging to work for "group by project", we need to do a bunch of
+   * server-side magic since there's currently no way to sort by project name on
+   * the database.
+   *
+   * TODO: Move this all to the database.
+   */
+  private function applyGroupByProject(array $tasks) {
+
+    $project_phids = array();
+    foreach ($tasks as $task) {
+      foreach ($task->getProjectPHIDs() as $phid) {
+        $project_phids[$phid] = true;
+      }
+    }
+
+    $handles = id(new PhabricatorObjectHandleData(array_keys($project_phids)))
+      ->loadHandles();
+
+    $max = 1;
+    foreach ($handles as $handle) {
+      $max = max($max, strlen($handle->getName()));
+    }
+
+    $items = array();
+    $ii = 0;
+    foreach ($tasks as $key => $task) {
+      $phids = $task->getProjectPHIDs();
+      if ($this->projectPHIDs) {
+        $phids = array_diff($phids, $this->projectPHIDs);
+      }
+      if ($phids) {
+        foreach ($phids as $phid) {
+          $items[] = array(
+            'key' => $key,
+            'seq' => sprintf(
+              '%'.$max.'s%d',
+              $handles[$phid]->getName(),
+              $ii),
+          );
+        }
+      } else {
+        // Sort "no project" tasks first.
+        $items[] = array(
+          'key' => $key,
+          'seq' => '',
+        );
+      }
+      ++$ii;
+    }
+
+    $items = isort($items, 'seq');
+    $items = array_slice(
+      $items,
+      nonempty($this->offset),
+      nonempty($this->limit, self::DEFAULT_PAGE_SIZE));
+
+    $result = array();
+    foreach ($items as $item) {
+      $result[] = $tasks[$item['key']];
+    }
+
+    return $result;
+  }
 
 }

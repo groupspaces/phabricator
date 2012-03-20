@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,18 @@
  * limitations under the License.
  */
 
-class PhabricatorOwnerPathQuery {
+final class PhabricatorOwnerPathQuery {
 
   public static function loadAffectedPaths(
     PhabricatorRepository $repository,
     PhabricatorRepositoryCommit $commit) {
 
-    $drequest = self::buildDiffusionRequest($repository, $commit);
+    $drequest = DiffusionRequest::newFromAphrontRequestDictionary(
+      array(
+        'repository'  => $repository,
+        'commit'      => $commit->getCommitIdentifier(),
+      ));
+
     $path_query = DiffusionPathChangeQuery::newFromDiffusionRequest(
       $drequest);
     $paths = $path_query->loadChanges();
@@ -36,17 +41,6 @@ class PhabricatorOwnerPathQuery {
       $result[] = $basic_path;
     }
     return $result;
-  }
-
-  private static function buildDiffusionRequest(
-    PhabricatorRepository $repository,
-    PhabricatorRepositoryCommit $commit) {
-
-    return DiffusionRequest::newFromAphrontRequestDictionary(
-      array(
-        'callsign'  => $repository->getCallsign(),
-        'commit'    => $commit->getCommitIdentifier(),
-      ));
   }
 
 }

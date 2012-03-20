@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class PhabricatorTypeaheadCommonDatasourceController
+final class PhabricatorTypeaheadCommonDatasourceController
   extends PhabricatorTypeaheadDatasourceController {
 
   public function willProcessRequest(array $data) {
@@ -36,10 +36,15 @@ class PhabricatorTypeaheadCommonDatasourceController
     $need_packages = false;
     $need_upforgrabs = false;
     $need_arcanist_projects = false;
+    $need_noproject = false;
     switch ($this->type) {
       case 'searchowner':
         $need_users = true;
         $need_upforgrabs = true;
+        break;
+      case 'searchproject':
+        $need_projs = true;
+        $need_noproject = true;
         break;
       case 'users':
         $need_users = true;
@@ -74,6 +79,14 @@ class PhabricatorTypeaheadCommonDatasourceController
         'upforgrabs (Up For Grabs)',
         null,
         ManiphestTaskOwner::OWNER_UP_FOR_GRABS,
+      );
+    }
+
+    if ($need_noproject) {
+      $data[] = array(
+        'noproject (No Project)',
+        null,
+        ManiphestTaskOwner::PROJECT_NO_PROJECT,
       );
     }
 
@@ -116,6 +129,7 @@ class PhabricatorTypeaheadCommonDatasourceController
           $user->getUsername().' ('.$user->getRealName().')',
           '/p/'.$user->getUsername(),
           $user->getPHID(),
+          $user->getUsername(),
         );
       }
     }
@@ -132,7 +146,9 @@ class PhabricatorTypeaheadCommonDatasourceController
     }
 
     if ($need_projs) {
-      $projs = id(new PhabricatorProject())->loadAll();
+      $projs = id(new PhabricatorProject())->loadAllWhere(
+        'status != %d',
+        PhabricatorProjectStatus::STATUS_ARCHIVED);
       foreach ($projs as $proj) {
         $data[] = array(
           $proj->getName(),
@@ -149,6 +165,7 @@ class PhabricatorTypeaheadCommonDatasourceController
           'r'.$repo->getCallsign().' ('.$repo->getName().')',
           '/diffusion/'.$repo->getCallsign().'/',
           $repo->getPHID(),
+          'r'.$repo->getCallsign(),
         );
       }
     }

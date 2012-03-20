@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright 2011 Facebook, Inc.
+ * Copyright 2012 Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,29 +16,16 @@
  * limitations under the License.
  */
 
-class DiffusionGitRequest extends DiffusionRequest {
+/**
+ * @group diffusion
+ */
+final class DiffusionGitRequest extends DiffusionRequest {
 
-  protected function initializeFromAphrontRequestDictionary(array $data) {
-    parent::initializeFromAphrontRequestDictionary($data);
+  protected function getSupportsBranches() {
+    return true;
+  }
 
-    $path = $this->path;
-    $parts = explode('/', $path);
-
-    $branch = array_shift($parts);
-    if ($branch != ':') {
-      $this->branch = $this->decodeBranchName($branch);
-    }
-
-    foreach ($parts as $key => $part) {
-      // Prevent any hyjinx since we're ultimately shipping this to the
-      // filesystem under a lot of git workflows.
-      if ($part == '..') {
-        unset($parts[$key]);
-      }
-    }
-
-    $this->path = implode('/', $parts);
-
+  protected function didInitialize() {
     if ($this->repository) {
       $repository = $this->repository;
 
@@ -109,11 +96,6 @@ class DiffusionGitRequest extends DiffusionRequest {
     throw new Exception("Unable to determine branch!");
   }
 
-  public function getUriPath() {
-    return '/diffusion/'.$this->getCallsign().'/browse/'.
-      $this->getBranchURIComponent($this->branch).$this->path;
-  }
-
   public function getCommit() {
     if ($this->commit) {
       return $this->commit;
@@ -124,28 +106,6 @@ class DiffusionGitRequest extends DiffusionRequest {
 
   public function getStableCommitName() {
     return substr($this->stableCommitName, 0, 16);
-  }
-
-  public function getBranchURIComponent($branch) {
-    return $this->encodeBranchName($branch).'/';
-  }
-
-  private function decodeBranchName($branch) {
-    $branch = str_replace(':', '/', $branch);
-
-    // Backward compatibility for older-style URIs which had an explicit
-    // "origin" remote in the branch name. If a remote is specified, strip it
-    // away.
-    if (strpos($branch, '/') !== false) {
-      $parts = explode('/', $branch);
-      $branch = end($parts);
-    }
-
-    return $branch;
-  }
-
-  private function encodeBranchName($branch) {
-    return str_replace('/', ':', $branch);
   }
 
 }

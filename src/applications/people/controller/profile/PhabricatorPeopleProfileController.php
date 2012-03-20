@@ -16,7 +16,8 @@
  * limitations under the License.
  */
 
-class PhabricatorPeopleProfileController extends PhabricatorPeopleController {
+final class PhabricatorPeopleProfileController
+  extends PhabricatorPeopleController {
 
   private $username;
   private $page;
@@ -45,9 +46,10 @@ class PhabricatorPeopleProfileController extends PhabricatorPeopleController {
     if (!$profile) {
       $profile = new PhabricatorUserProfile();
     }
+    $username = phutil_escape_uri($user->getUserName());
 
     $nav = new AphrontSideNavFilterView();
-    $nav->setBaseURI(new PhutilURI('/p/'.$user->getUserName().'/'));
+    $nav->setBaseURI(new PhutilURI('/p/'.$username.'/'));
     $nav->addFilter('feed', 'Feed');
     $nav->addFilter('about', 'About');
 
@@ -58,7 +60,7 @@ class PhabricatorPeopleProfileController extends PhabricatorPeopleController {
     $nav->addFilter(
       null,
       "Revisions {$external_arrow}",
-      '/differential/filter/revisions/?phid='.$user->getPHID());
+      '/differential/filter/revisions/'.$username.'/');
 
     $nav->addFilter(
       null,
@@ -68,7 +70,7 @@ class PhabricatorPeopleProfileController extends PhabricatorPeopleController {
     $nav->addFilter(
       null,
       "Commits {$external_arrow}",
-      '/diffusion/author/'.$user->getUserName().'/');
+      '/audit/view/author/'.$username.'/');
 
     $oauths = id(new PhabricatorUserOAuthInfo())->loadAllWhere(
       'userID = %d',
@@ -160,14 +162,6 @@ class PhabricatorPeopleProfileController extends PhabricatorPeopleController {
 
     $engine = PhabricatorMarkupEngine::newProfileMarkupEngine();
     $blurb = $engine->markupText($blurb);
-    $commit_list =
-      phutil_render_tag(
-        'a',
-        array(
-          'href' => '/diffusion/author/'.
-            phutil_escape_uri($user->getUsername()),
-        ),
-        'Recent Commits');
 
     $viewer = $this->getRequest()->getUser();
 

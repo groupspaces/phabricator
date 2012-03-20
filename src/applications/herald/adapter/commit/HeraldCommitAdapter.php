@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class HeraldCommitAdapter extends HeraldObjectAdapter {
+final class HeraldCommitAdapter extends HeraldObjectAdapter {
 
   protected $diff;
   protected $revision;
@@ -26,6 +26,7 @@ class HeraldCommitAdapter extends HeraldObjectAdapter {
   protected $commitData;
 
   protected $emailPHIDs = array();
+  protected $auditMap = array();
 
   protected $affectedPaths;
   protected $affectedRevision;
@@ -48,6 +49,10 @@ class HeraldCommitAdapter extends HeraldObjectAdapter {
 
   public function getEmailPHIDs() {
     return array_keys($this->emailPHIDs);
+  }
+
+  public function getAuditMap() {
+    return $this->auditMap;
   }
 
   public function getHeraldName() {
@@ -82,17 +87,17 @@ class HeraldCommitAdapter extends HeraldObjectAdapter {
 
   public function loadAuditNeededPackage() {
     if ($this->auditNeededPackages === null) {
-      $status_arr = array (
+      $status_arr = array(
         PhabricatorAuditStatusConstants::AUDIT_REQUIRED,
-          PhabricatorAuditStatusConstants::CONCERNED,
-        );
-      $relationships = id(new PhabricatorOwnersPackageCommitRelationship())
+        PhabricatorAuditStatusConstants::CONCERNED,
+      );
+      $requests = id(new PhabricatorRepositoryAuditRequest())
           ->loadAllWhere(
         "commitPHID = %s AND auditStatus IN (%Ls)",
         $this->commit->getPHID(),
         $status_arr);
 
-      $packages = mpull($relationships, 'getPackagePHID');
+      $packages = mpull($requests, 'getAuditorPHID');
       $this->auditNeededPackages = $packages;
     }
     return $this->auditNeededPackages;
@@ -185,6 +190,7 @@ class HeraldCommitAdapter extends HeraldObjectAdapter {
   }
 
   public function applyHeraldEffects(array $effects) {
+
     $result = array();
     foreach ($effects as $effect) {
       $action = $effect->getAction();
@@ -196,13 +202,21 @@ class HeraldCommitAdapter extends HeraldObjectAdapter {
             'Great success at doing nothing.');
           break;
         case HeraldActionConfig::ACTION_EMAIL:
-          foreach ($effect->getTarget() as $fbid) {
-            $this->emailPHIDs[$fbid] = true;
+          foreach ($effect->getTarget() as $phid) {
+            $this->emailPHIDs[$phid] = true;
           }
           $result[] = new HeraldApplyTranscript(
             $effect,
             true,
             'Added address to email targets.');
+          break;
+        case HeraldActionConfig::ACTION_AUDIT:
+          foreach ($effect->getTarget() as $phid) {
+            if (empty($this->auditMap[$phid])) {
+              $this->auditMap[$phid] = array();
+            }
+            $this->auditMap[$phid][] = $effect->getRuleID();
+          }
           break;
         default:
           throw new Exception("No rules to handle action '{$action}'.");

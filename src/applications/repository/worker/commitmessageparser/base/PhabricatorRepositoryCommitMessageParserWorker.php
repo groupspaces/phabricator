@@ -47,6 +47,12 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
       $parser_obj->parseCommitDetails();
     }
 
+    $author_phid = $data->getCommitDetail('authorPHID');
+    if ($author_phid) {
+      $commit->setAuthorPHID($author_phid);
+      $commit->save();
+    }
+
     $data->save();
 
     $conn_w = id(new DifferentialRevision())->establishConnection('w');
@@ -99,6 +105,7 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
             $revision,
             $committer,
             DifferentialAction::ACTION_COMMIT);
+          $editor->setIsDaemonWorkflow(true);
           $editor->setMessage($message)->save();
         }
       }

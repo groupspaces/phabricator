@@ -19,7 +19,7 @@
 /**
  * @group maniphest
  */
-class ManiphestTaskListController extends ManiphestController {
+final class ManiphestTaskListController extends ManiphestController {
 
   const DEFAULT_PAGE_SIZE = 1000;
 
@@ -27,6 +27,12 @@ class ManiphestTaskListController extends ManiphestController {
 
   public function willProcessRequest(array $data) {
     $this->view = idx($data, 'view');
+  }
+
+  private function getArrToStrList($key) {
+    $arr = $this->getRequest()->getArr($key);
+    $arr = implode(',', $arr);
+    return nonempty($arr, null);
   }
 
   public function processRequest() {
@@ -37,36 +43,21 @@ class ManiphestTaskListController extends ManiphestController {
     if ($request->isFormPost()) {
       // Redirect to GET so URIs can be copy/pasted.
 
-      $user_phids = $request->getArr('set_users');
-      $proj_phids = $request->getArr('set_projects');
       $task_ids   = $request->getStr('set_tasks');
-      $user_phids = implode(',', $user_phids);
-      $proj_phids = implode(',', $proj_phids);
-      $user_phids = nonempty($user_phids, null);
-      $proj_phids = nonempty($proj_phids, null);
       $task_ids   = nonempty($task_ids, null);
 
       $uri = $request->getRequestURI()
-        ->alter('users', $user_phids)
-        ->alter('projects', $proj_phids)
+        ->alter('users',      $this->getArrToStrList('set_users'))
+        ->alter('projects',   $this->getArrToStrList('set_projects'))
+        ->alter('xprojects',  $this->getArrToStrList('set_xprojects'))
+        ->alter('owners',     $this->getArrToStrList('set_owners'))
+        ->alter('authors',    $this->getArrToStrList('set_authors'))
         ->alter('tasks', $task_ids);
 
       return id(new AphrontRedirectResponse())->setURI($uri);
     }
 
-    $nav = new AphrontSideNavFilterView();
-    $nav->setBaseURI(new PhutilURI('/maniphest/view/'));
-    $nav->addLabel('User Tasks');
-    $nav->addFilter('action',       'Assigned');
-    $nav->addFilter('created',      'Created');
-    $nav->addFilter('subscribed',   'Subscribed');
-    $nav->addFilter('triage',       'Need Triage');
-    $nav->addSpacer();
-    $nav->addLabel('All Tasks');
-    $nav->addFilter('alltriage',    'Need Triage');
-    $nav->addFilter('all',          'All Tasks');
-    $nav->addSpacer();
-    $nav->addFilter('custom',       'Custom');
+    $nav = $this->buildBaseSideNav();
 
     $this->view = $nav->selectFilter($this->view, 'action');
 
@@ -75,42 +66,56 @@ class ManiphestTaskListController extends ManiphestController {
       'created' => true,
       'subscribed' => true,
       'triage' => true,
+      'projecttriage' => true,
+      'projectall' => true,
     );
 
-    list($status_map, $status_links) = $this->renderStatusLinks();
-    list($grouping, $group_links) = $this->renderGroupLinks();
-    list($order, $order_links) = $this->renderOrderLinks();
+    list($status_map, $status_control) = $this->renderStatusLinks();
+    list($grouping, $group_control) = $this->renderGroupLinks();
+    list($order, $order_control) = $this->renderOrderLinks();
 
-    $user_phids = $request->getStr('users');
-    if (strlen($user_phids)) {
-      $user_phids = explode(',', $user_phids);
+    $user_phids = $request->getStrList(
+      'users',
+      array($user->getPHID()));
+    if ($this->view == 'projecttriage' || $this->view == 'projectall') {
+      $project_query = new PhabricatorProjectQuery();
+      $project_query->setMembers($user_phids);
+      $projects = $project_query->execute();
+      $project_phids = mpull($projects, 'getPHID');
     } else {
-      $user_phids = array($user->getPHID());
+      $project_phids = $request->getStrList('projects');
     }
-
-    $project_phids = $request->getStr('projects');
-    if (strlen($project_phids)) {
-      $project_phids = explode(',', $project_phids);
-    } else {
-      $project_phids = array();
-    }
-
+    $exclude_project_phids = $request->getStrList('xprojects');
     $task_ids = $request->getStrList('tasks');
+    $owner_phids = $request->getStrList('owners');
+    $author_phids = $request->getStrList('authors');
 
     $page = $request->getInt('page');
     $page_size = self::DEFAULT_PAGE_SIZE;
 
-    list($tasks, $handles, $total_count) = $this->loadTasks(
-      $user_phids,
-      $project_phids,
-      $task_ids,
+    $query = new PhabricatorSearchQuery();
+    $query->setQuery('<<maniphest>>');
+    $query->setParameters(
       array(
-        'status'  => $status_map,
-        'group'   => $grouping,
-        'order'   => $order,
-        'offset'  => $page,
-        'limit'   => $page_size,
+        'view'                => $this->view,
+        'userPHIDs'           => $user_phids,
+        'projectPHIDs'        => $project_phids,
+        'excludeProjectPHIDs' => $exclude_project_phids,
+        'ownerPHIDs'          => $owner_phids,
+        'authorPHIDs'         => $author_phids,
+        'taskIDs'             => $task_ids,
+        'group'               => $grouping,
+        'order'               => $order,
+        'offset'              => $page,
+        'limit'               => $page_size,
+        'status'              => $status_map,
       ));
+
+    $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
+    $query->save();
+    unset($unguarded);
+
+    list($tasks, $handles, $total_count) = self::loadTasks($query);
 
     $form = id(new AphrontFormView())
       ->setUser($user)
@@ -136,32 +141,60 @@ class ManiphestTaskListController extends ManiphestController {
           ->setLabel('Task IDs')
           ->setValue(join(',', $task_ids))
       );
+
+      $tokens = array();
+      foreach ($owner_phids as $phid) {
+        $tokens[$phid] = $handles[$phid]->getFullName();
+      }
+      $form->appendChild(
+        id(new AphrontFormTokenizerControl())
+          ->setDatasource('/typeahead/common/searchowner/')
+          ->setName('set_owners')
+          ->setLabel('Owners')
+          ->setValue($tokens));
+
+      $tokens = array();
+      foreach ($author_phids as $phid) {
+        $tokens[$phid] = $handles[$phid]->getFullName();
+      }
+      $form->appendChild(
+        id(new AphrontFormTokenizerControl())
+          ->setDatasource('/typeahead/common/users/')
+          ->setName('set_authors')
+          ->setLabel('Authors')
+          ->setValue($tokens));
     }
 
     $tokens = array();
     foreach ($project_phids as $phid) {
       $tokens[$phid] = $handles[$phid]->getFullName();
     }
-    $form->appendChild(
-      id(new AphrontFormTokenizerControl())
-        ->setDatasource('/typeahead/common/projects/')
-        ->setName('set_projects')
-        ->setLabel('Projects')
-        ->setValue($tokens));
+    if ($this->view != 'projectall' && $this->view != 'projecttriage') {
+      $form->appendChild(
+        id(new AphrontFormTokenizerControl())
+          ->setDatasource('/typeahead/common/searchproject/')
+          ->setName('set_projects')
+          ->setLabel('Projects')
+          ->setValue($tokens));
+    }
+
+    if ($this->view == 'custom') {
+      $tokens = array();
+      foreach ($exclude_project_phids as $phid) {
+        $tokens[$phid] = $handles[$phid]->getFullName();
+      }
+      $form->appendChild(
+        id(new AphrontFormTokenizerControl())
+          ->setDatasource('/typeahead/common/projects/')
+          ->setName('set_xprojects')
+          ->setLabel('Exclude Projects')
+          ->setValue($tokens));
+    }
 
     $form
-      ->appendChild(
-        id(new AphrontFormToggleButtonsControl())
-          ->setLabel('Status')
-          ->setValue($status_links))
-      ->appendChild(
-        id(new AphrontFormToggleButtonsControl())
-          ->setLabel('Group')
-          ->setValue($group_links))
-      ->appendChild(
-        id(new AphrontFormToggleButtonsControl())
-          ->setLabel('Order')
-          ->setValue($order_links));
+      ->appendChild($status_control)
+      ->appendChild($group_control)
+      ->appendChild($order_control);
 
     $form->appendChild(
       id(new AphrontFormSubmitControl())
@@ -197,8 +230,11 @@ class ManiphestTaskListController extends ManiphestController {
 
     require_celerity_resource('maniphest-task-summary-css');
 
+    $list_container = new AphrontNullView();
+    $list_container->appendChild('<div class="maniphest-list-container">');
+
     if (!$have_tasks) {
-      $nav->appendChild(
+      $list_container->appendChild(
         '<h1 class="maniphest-task-group-header">'.
           'No matching tasks.'.
         '</h1>');
@@ -217,7 +253,7 @@ class ManiphestTaskListController extends ManiphestController {
       $max = number_format($max);
       $tot = number_format($tot);
 
-      $nav->appendChild(
+      $list_container->appendChild(
         '<div class="maniphest-total-result-count">'.
           "Displaying tasks {$cur} - {$max} of {$tot}.".
         '</div>');
@@ -240,7 +276,7 @@ class ManiphestTaskListController extends ManiphestController {
       }
 
 
-      $selector->appendChild($this->renderBatchEditor());
+      $selector->appendChild($this->renderBatchEditor($query));
 
       $selector = phabricator_render_form(
         $user,
@@ -250,9 +286,12 @@ class ManiphestTaskListController extends ManiphestController {
         ),
         $selector->render());
 
-      $nav->appendChild($selector);
-      $nav->appendChild($pager);
+      $list_container->appendChild($selector);
+      $list_container->appendChild($pager);
     }
+
+    $list_container->appendChild('</div>');
+    $nav->appendChild($list_container);
 
     return $this->buildStandardPageResponse(
       $nav,
@@ -261,17 +300,34 @@ class ManiphestTaskListController extends ManiphestController {
       ));
   }
 
-  private function loadTasks(
-    array $user_phids,
-    array $project_phids,
-    array $task_ids,
-    array $dict) {
+  public static function loadTasks(PhabricatorSearchQuery $search_query) {
+
+    $user_phids = $search_query->getParameter('userPHIDs', array());
+    $project_phids = $search_query->getParameter('projectPHIDs', array());
+    $task_ids = $search_query->getParameter('taskIDs', array());
+    $xproject_phids = $search_query->getParameter(
+      'excludeProjectPHIDs',
+      array());
+    $owner_phids = $search_query->getParameter('ownerPHIDs', array());
+    $author_phids = $search_query->getParameter('authorPHIDs', array());
 
     $query = new ManiphestTaskQuery();
     $query->withProjects($project_phids);
     $query->withTaskIDs($task_ids);
 
-    $status = $dict['status'];
+    if ($xproject_phids) {
+      $query->withoutProjects($xproject_phids);
+    }
+
+    if ($owner_phids) {
+      $query->withOwners($owner_phids);
+    }
+
+    if ($author_phids) {
+      $query->withAuthors($author_phids);
+    }
+
+    $status = $search_query->getParameter('status', 'all');
     if (!empty($status['open']) && !empty($status['closed'])) {
       $query->withStatus(ManiphestTaskQuery::STATUS_ANY);
     } else if (!empty($status['open'])) {
@@ -280,7 +336,7 @@ class ManiphestTaskListController extends ManiphestController {
       $query->withStatus(ManiphestTaskQuery::STATUS_CLOSED);
     }
 
-    switch ($this->view) {
+    switch ($search_query->getParameter('view')) {
       case 'action':
         $query->withOwners($user_phids);
         break;
@@ -299,6 +355,13 @@ class ManiphestTaskListController extends ManiphestController {
         break;
       case 'all':
         break;
+      case 'projecttriage':
+        $query->withPriority(ManiphestTaskPriority::PRIORITY_TRIAGE);
+        $query->withAnyProject(true);
+        break;
+      case 'projectall':
+        $query->withAnyProject(true);
+        break;
     }
 
     $order_map = array(
@@ -308,36 +371,52 @@ class ManiphestTaskListController extends ManiphestController {
     $query->setOrderBy(
       idx(
         $order_map,
-        $dict['order'],
+        $search_query->getParameter('order'),
         ManiphestTaskQuery::ORDER_MODIFIED));
 
     $group_map = array(
       'priority'  => ManiphestTaskQuery::GROUP_PRIORITY,
       'owner'     => ManiphestTaskQuery::GROUP_OWNER,
       'status'    => ManiphestTaskQuery::GROUP_STATUS,
+      'project'   => ManiphestTaskQuery::GROUP_PROJECT,
     );
     $query->setGroupBy(
       idx(
         $group_map,
-        $dict['group'],
+        $search_query->getParameter('group'),
         ManiphestTaskQuery::GROUP_NONE));
 
     $query->setCalculateRows(true);
-    $query->setLimit($dict['limit']);
-    $query->setOffset($dict['offset']);
+    $query->setLimit($search_query->getParameter('limit'));
+    $query->setOffset($search_query->getParameter('offset'));
 
     $data = $query->execute();
     $total_row_count = $query->getRowCount();
 
+    $project_group_phids = array();
+    if ($search_query->getParameter('group') == 'project') {
+      foreach ($data as $task) {
+        foreach ($task->getProjectPHIDs() as $phid) {
+          $project_group_phids[] = $phid;
+        }
+      }
+    }
+
     $handle_phids = mpull($data, 'getOwnerPHID');
-    $handle_phids = array_merge($handle_phids, $project_phids, $user_phids);
+    $handle_phids = array_merge(
+      $handle_phids,
+      $project_phids,
+      $user_phids,
+      $xproject_phids,
+      $owner_phids,
+      $author_phids,
+      $project_group_phids);
     $handles = id(new PhabricatorObjectHandleData($handle_phids))
       ->loadHandles();
 
-    switch ($dict['group']) {
+    switch ($search_query->getParameter('group')) {
       case 'priority':
         $data = mgroup($data, 'getPriority');
-        krsort($data);
 
         // If we have invalid priorities, they'll all map to "???". Merge
         // arrays to prevent them from overwriting each other.
@@ -354,7 +433,6 @@ class ManiphestTaskListController extends ManiphestController {
         break;
       case 'status':
         $data = mgroup($data, 'getStatus');
-        ksort($data);
 
         $out = array();
         foreach ($data as $status => $tasks) {
@@ -383,6 +461,26 @@ class ManiphestTaskListController extends ManiphestController {
 
         ksort($data);
         break;
+      case 'project':
+        $grouped = array();
+        foreach ($data as $task) {
+          $phids = $task->getProjectPHIDs();
+          if ($project_phids) {
+            // If the user is filtering on "Bugs", don't show a "Bugs" group
+            // with every result since that's silly (the query also does this
+            // on the backend).
+            $phids = array_diff($phids, $project_phids);
+          }
+          if ($phids) {
+            foreach ($phids as $phid) {
+              $grouped[$handles[$phid]->getName()][$task->getID()] = $task;
+            }
+          } else {
+            $grouped['No Project'][$task->getID()] = $task;
+          }
+        }
+        $data = $grouped;
+        break;
       default:
         $data = array(
           'Tasks' => $data,
@@ -407,15 +505,18 @@ class ManiphestTaskListController extends ManiphestController {
       $status = 'o';
     }
 
-    $button_names = array(
-      'Open'    => 'o',
-      'Closed'  => 'c',
-      'All'     => 'oc',
-    );
+    $status_control = id(new AphrontFormToggleButtonsControl())
+      ->setLabel('Status')
+      ->setValue($status)
+      ->setBaseURI($request->getRequestURI(), 's')
+      ->setButtons(
+        array(
+          'o'   => 'Open',
+          'c'   => 'Closed',
+          'oc'  => 'All',
+        ));
 
-    $status_links = $this->renderFilterLinks($button_names, $status, 's');
-
-    return array($statuses[$status], $status_links);
+    return array($statuses[$status], $status_control);
   }
 
   public function renderOrderLinks() {
@@ -432,15 +533,18 @@ class ManiphestTaskListController extends ManiphestController {
     }
     $order_by = $orders[$order];
 
-    $order_names = array(
-      'Priority'  => 'p',
-      'Updated'   => 'u',
-      'Created'   => 'c',
-    );
+    $order_control = id(new AphrontFormToggleButtonsControl())
+      ->setLabel('Order')
+      ->setValue($order)
+      ->setBaseURI($request->getRequestURI(), 'o')
+      ->setButtons(
+        array(
+          'p' => 'Priority',
+          'u' => 'Updated',
+          'c' => 'Created',
+        ));
 
-    $order_links = $this->renderFilterLinks($order_names, $order, 'o');
-
-    return array($order_by, $order_links);
+    return array($order_by, $order_control);
   }
 
   public function renderGroupLinks() {
@@ -452,49 +556,31 @@ class ManiphestTaskListController extends ManiphestController {
       'p' => 'priority',
       's' => 'status',
       'o' => 'owner',
+      'j' => 'project',
     );
     if (empty($groups[$group])) {
       $group = 'p';
     }
     $group_by = $groups[$group];
 
-    $group_names = array(
-      'Priority'  => 'p',
-      'Owner'     => 'o',
-      'Status'    => 's',
-      'None'      => 'n',
-    );
 
-    $group_links = $this->renderFilterLinks($group_names, $group, 'g');
-
-    return array($group_by, $group_links);
-  }
-
-  private function renderFilterLinks($filter_map, $selected, $uri_param) {
-    $request = $this->getRequest();
-    $uri = $request->getRequestURI();
-
-    $links = array();
-    foreach ($filter_map as $name => $value) {
-      if ($value == $selected) {
-        $more = ' toggle-selected toggle-fixed';
-        $href = null;
-      } else {
-        $more = null;
-        $href = $uri->alter($uri_param, $value);
-      }
-      $links[] = phutil_render_tag(
-        'a',
+    $group_control = id(new AphrontFormToggleButtonsControl())
+      ->setLabel('Group')
+      ->setValue($group)
+      ->setBaseURI($request->getRequestURI(), 'g')
+      ->setButtons(
         array(
-          'class' => 'toggle'.$more,
-          'href'  => $href,
-        ),
-        $name);
-    }
-    return implode("\n", $links);
+          'p' => 'Priority',
+          'o' => 'Owner',
+          's' => 'Status',
+          'j' => 'Project',
+          'n' => 'None',
+        ));
+
+    return array($group_by, $group_control);
   }
 
-  private function renderBatchEditor() {
+  private function renderBatchEditor(PhabricatorSearchQuery $search_query) {
     Javelin::initBehavior(
       'maniphest-batch-selector',
       array(
@@ -533,6 +619,14 @@ class ManiphestTaskListController extends ManiphestController {
       ),
       'Batch Edit Selected Tasks &raquo;');
 
+    $export = javelin_render_tag(
+      'a',
+      array(
+        'href' => '/maniphest/export/'.$search_query->getQueryKey().'/',
+        'class' => 'grey button',
+      ),
+      'Export Tasks to Excel...');
+
     return
       '<div class="maniphest-batch-editor">'.
         '<div class="batch-editor-header">Batch Task Editor</div>'.
@@ -541,6 +635,9 @@ class ManiphestTaskListController extends ManiphestController {
             '<td>'.
               $select_all.
               $select_none.
+            '</td>'.
+            '<td>'.
+              $export.
             '</td>'.
             '<td id="batch-select-status-cell">'.
               '0 Selected Tasks'.

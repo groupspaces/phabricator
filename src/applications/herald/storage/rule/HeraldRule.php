@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-class HeraldRule extends HeraldDAO {
+final class HeraldRule extends HeraldDAO {
 
   const TABLE_RULE_APPLIED = 'herald_ruleapplied';
 
@@ -28,7 +28,7 @@ class HeraldRule extends HeraldDAO {
   protected $repetitionPolicy;
   protected $ruleType;
 
-  protected $configVersion = 8;
+  protected $configVersion = 9;
 
   private $ruleApplied = array(); // phids for which this rule has been applied
   private $invalidOwner = false;
